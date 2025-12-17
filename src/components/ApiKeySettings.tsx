@@ -68,7 +68,6 @@ export function ApiKeySetup({ onSave }: ApiKeySetupProps) {
   return (
     <div className="space-y-3 py-2">
       <div className="text-center space-y-1">
-        <img src={andLogo} alt="AND Solution" className="h-10 w-10 mx-auto" />
         <h3 className="font-medium text-sm">Connect to Clockify</h3>
         <p className="text-[10px] text-muted-foreground">
           Enter your API key to start tracking time
