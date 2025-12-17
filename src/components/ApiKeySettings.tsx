@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,23 +7,32 @@ import { toast } from "@/hooks/use-toast";
 
 const API_KEY_STORAGE_KEY = "clockify_api_key";
 
+// Simple event emitter for API key changes
+const listeners = new Set<() => void>();
+const notifyListeners = () => listeners.forEach((l) => l());
+
 export function useClockifyApiKey() {
-  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [apiKey, setApiKey] = useState<string | null>(() => 
+    localStorage.getItem(API_KEY_STORAGE_KEY)
+  );
 
   useEffect(() => {
-    const stored = localStorage.getItem(API_KEY_STORAGE_KEY);
-    setApiKey(stored);
+    const update = () => setApiKey(localStorage.getItem(API_KEY_STORAGE_KEY));
+    listeners.add(update);
+    return () => { listeners.delete(update); };
   }, []);
 
-  const saveApiKey = (key: string) => {
+  const saveApiKey = useCallback((key: string) => {
     localStorage.setItem(API_KEY_STORAGE_KEY, key);
     setApiKey(key);
-  };
+    notifyListeners();
+  }, []);
 
-  const clearApiKey = () => {
+  const clearApiKey = useCallback(() => {
     localStorage.removeItem(API_KEY_STORAGE_KEY);
     setApiKey(null);
-  };
+    notifyListeners();
+  }, []);
 
   return { apiKey, saveApiKey, clearApiKey, isConfigured: !!apiKey };
 }
