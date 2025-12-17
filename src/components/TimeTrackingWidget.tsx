@@ -4,9 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Play, Square, Clock, ExternalLink, Timer } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Play, Square, Clock, ExternalLink, Timer, Settings } from "lucide-react";
 import { TimeEntryList, TimeEntry } from "./TimeEntryList";
 import { ProjectSelector, ClockifyProject } from "./ProjectSelector";
+import { ApiKeySettings, useClockifyApiKey } from "./ApiKeySettings";
 import { cn } from "@/lib/utils";
 
 interface LinearIssue {
@@ -53,6 +55,8 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
   const [elapsedTime, setElapsedTime] = useState(0);
   const [description, setDescription] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>("1");
+  const [showSettings, setShowSettings] = useState(false);
+  const { isConfigured } = useClockifyApiKey();
   const [entries, setEntries] = useState<TimeEntry[]>([
     {
       id: "1",
@@ -145,44 +149,64 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
 
   return (
     <Card className={cn("w-full max-w-md shadow-lg", className)}>
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-2 pt-3 px-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-linear">
-              <span className="text-xs font-bold text-linear-foreground">Li</span>
+          <div className="flex items-center gap-1.5">
+            <div className="flex h-6 w-6 items-center justify-center rounded bg-linear">
+              <span className="text-[10px] font-bold text-linear-foreground">Li</span>
             </div>
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-clockify">
-              <Clock className="h-4 w-4 text-clockify-foreground" />
+            <div className="flex h-6 w-6 items-center justify-center rounded bg-clockify">
+              <Clock className="h-3 w-3 text-clockify-foreground" />
             </div>
           </div>
-          <Badge variant="outline" className="text-xs">
-            Widget v1.0
-          </Badge>
+          <div className="flex items-center gap-1">
+            {!isConfigured && (
+              <Badge variant="outline" className="text-[10px] text-warning border-warning/30">
+                Setup needed
+              </Badge>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => setShowSettings(!showSettings)}
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-3 px-3 pb-3">
+        {/* Settings Panel */}
+        <Collapsible open={showSettings || !isConfigured}>
+          <CollapsibleContent className="space-y-3">
+            <ApiKeySettings onSave={() => setShowSettings(false)} />
+            <Separator />
+          </CollapsibleContent>
+        </Collapsible>
+
         {/* Issue Context */}
-        <div className="rounded-lg border bg-muted/30 p-3">
+        <div className="rounded-md border bg-muted/30 p-2">
           <div className="flex items-start justify-between gap-2">
-            <div className="space-y-1 flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="font-mono text-xs shrink-0">
+            <div className="space-y-0.5 flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <Badge variant="secondary" className="font-mono text-[10px] h-5 shrink-0">
                   {currentIssue.identifier}
                 </Badge>
                 <Badge 
                   variant="outline" 
-                  className={cn("text-xs shrink-0", getPriorityColor(currentIssue.priority))}
+                  className={cn("text-[10px] h-5 shrink-0", getPriorityColor(currentIssue.priority))}
                 >
                   P{currentIssue.priority}
                 </Badge>
               </div>
-              <h3 className="font-medium text-sm leading-tight truncate">
+              <h3 className="font-medium text-xs leading-tight truncate">
                 {currentIssue.title}
               </h3>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                 <span className="inline-flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-clockify" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-clockify" />
                   {currentIssue.status}
                 </span>
                 {currentIssue.assignee && (
@@ -193,29 +217,29 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
                 )}
               </div>
             </div>
-            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-              <ExternalLink className="h-4 w-4" />
+            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
+              <ExternalLink className="h-3 w-3" />
             </Button>
           </div>
         </div>
 
         {/* Timer Display */}
-        <div className="text-center py-4">
+        <div className="text-center py-2">
           <div className={cn(
-            "font-mono text-5xl font-bold tracking-tight transition-colors",
+            "font-mono text-4xl font-bold tracking-tight transition-colors",
             isRunning ? "text-clockify" : "text-foreground"
           )}>
             {formatTime(elapsedTime)}
           </div>
-          <div className="flex items-center justify-center gap-1 mt-2 text-sm text-muted-foreground">
-            <Timer className="h-4 w-4" />
+          <div className="flex items-center justify-center gap-1 mt-1 text-xs text-muted-foreground">
+            <Timer className="h-3 w-3" />
             <span>Total: {formatDuration(totalTrackedTime + (isRunning ? elapsedTime : 0))}</span>
           </div>
         </div>
 
         {/* Project Selector */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground">Clockify Project</label>
+        <div className="space-y-1">
+          <label className="text-[10px] font-medium text-muted-foreground">Clockify Project</label>
           <ProjectSelector
             projects={mockProjects}
             selectedProjectId={selectedProjectId}
@@ -230,7 +254,7 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           disabled={isRunning}
-          className="text-sm"
+          className="text-xs h-8"
         />
 
         {/* Control Buttons */}
@@ -238,18 +262,19 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
           {!isRunning ? (
             <Button 
               onClick={handleStart} 
-              className="flex-1 bg-clockify hover:bg-clockify/90 text-clockify-foreground"
+              className="flex-1 h-8 text-xs bg-clockify hover:bg-clockify/90 text-clockify-foreground"
+              disabled={!isConfigured}
             >
-              <Play className="mr-2 h-4 w-4" />
+              <Play className="mr-1.5 h-3 w-3" />
               Start Timer
             </Button>
           ) : (
             <Button 
               onClick={handleStop} 
               variant="destructive" 
-              className="flex-1"
+              className="flex-1 h-8 text-xs"
             >
-              <Square className="mr-2 h-4 w-4" />
+              <Square className="mr-1.5 h-3 w-3" />
               Stop Timer
             </Button>
           )}
