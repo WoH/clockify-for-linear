@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, LogOut } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import andLogo from "@/assets/and-favicon.ico";
+import andLogo from "@/assets/and-logo.svg";
 
 const API_KEY_STORAGE_KEY = "clockify_api_key";
 
