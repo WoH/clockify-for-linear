@@ -9,7 +9,7 @@ import { TimeEntryList, TimeEntry } from "./TimeEntryList";
 import { ProjectSelector, ClockifyProject } from "./ProjectSelector";
 import { ApiKeySetup, LogoutButton, useClockifyApiKey } from "./ApiKeySettings";
 import { cn } from "@/lib/utils";
-import andLogo from "@/assets/and-favicon.ico";
+import andLogo from "@/assets/and-logo.svg";
 
 interface LinearIssue {
   id: string;
