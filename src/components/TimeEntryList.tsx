@@ -9,6 +9,9 @@ export interface TimeEntry {
   duration: number;
   startTime: Date;
   endTime: Date;
+  projectId?: string;
+  projectName?: string;
+  projectColor?: string;
 }
 
 interface TimeEntryListProps {
@@ -53,7 +56,16 @@ export function TimeEntryList({ entries, onDelete }: TimeEntryListProps) {
                 <p className="text-sm font-medium leading-tight truncate">
                   {entry.description}
                 </p>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                  {entry.projectName && (
+                    <span className="flex items-center gap-1">
+                      <span
+                        className="h-2 w-2 rounded-full shrink-0"
+                        style={{ backgroundColor: entry.projectColor }}
+                      />
+                      <span className="truncate max-w-[100px]">{entry.projectName}</span>
+                    </span>
+                  )}
                   <span>{format(entry.startTime, "HH:mm")}</span>
                   <span>-</span>
                   <span>{format(entry.endTime, "HH:mm")}</span>
