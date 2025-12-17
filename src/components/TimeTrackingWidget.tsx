@@ -4,11 +4,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Play, Square, Clock, ExternalLink, Timer } from "lucide-react";
+import { Play, Square, ExternalLink, Timer } from "lucide-react";
 import { TimeEntryList, TimeEntry } from "./TimeEntryList";
 import { ProjectSelector, ClockifyProject } from "./ProjectSelector";
 import { ApiKeySetup, LogoutButton, useClockifyApiKey } from "./ApiKeySettings";
 import { cn } from "@/lib/utils";
+import andLogo from "@/assets/and-favicon.ico";
 
 interface LinearIssue {
   id: string;
@@ -150,13 +151,8 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
     return (
       <Card className={cn("w-full max-w-md shadow-lg", className)}>
         <CardHeader className="pb-2 pt-3 px-3">
-          <div className="flex items-center justify-center gap-1.5">
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-linear">
-              <span className="text-[10px] font-bold text-linear-foreground">Li</span>
-            </div>
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-clockify">
-              <Clock className="h-3 w-3 text-clockify-foreground" />
-            </div>
+          <div className="flex items-center justify-center">
+            <img src={andLogo} alt="AND Solution" className="h-6 w-6" />
           </div>
         </CardHeader>
         <CardContent className="px-3 pb-3">
@@ -170,14 +166,7 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
     <Card className={cn("w-full max-w-md shadow-lg", className)}>
       <CardHeader className="pb-2 pt-3 px-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-linear">
-              <span className="text-[10px] font-bold text-linear-foreground">Li</span>
-            </div>
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-clockify">
-              <Clock className="h-3 w-3 text-clockify-foreground" />
-            </div>
-          </div>
+          <img src={andLogo} alt="AND Solution" className="h-6 w-6" />
           <LogoutButton className="h-6 w-6" />
         </div>
       </CardHeader>
