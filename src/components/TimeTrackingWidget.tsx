@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Play, Square, Clock, ExternalLink, Timer } from "lucide-react";
 import { TimeEntryList, TimeEntry } from "./TimeEntryList";
+import { ProjectSelector, ClockifyProject } from "./ProjectSelector";
 import { cn } from "@/lib/utils";
 
 interface LinearIssue {
@@ -38,10 +39,20 @@ const formatDuration = (seconds: number): string => {
   return `${mins}m`;
 };
 
+// Mock Clockify projects
+const mockProjects: ClockifyProject[] = [
+  { id: "1", name: "Linear Integration", color: "#5E6AD2", clientName: "Internal" },
+  { id: "2", name: "Frontend Development", color: "#03BB85", clientName: "Acme Corp" },
+  { id: "3", name: "API Development", color: "#F2994A", clientName: "Acme Corp" },
+  { id: "4", name: "Design System", color: "#EB5757", clientName: "Internal" },
+  { id: "5", name: "Bug Fixes", color: "#9B51E0" },
+];
+
 export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps) {
   const [isRunning, setIsRunning] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [description, setDescription] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>("1");
   const [entries, setEntries] = useState<TimeEntry[]>([
     {
       id: "1",
@@ -49,6 +60,9 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
       duration: 3600,
       startTime: new Date(Date.now() - 7200000),
       endTime: new Date(Date.now() - 3600000),
+      projectId: "1",
+      projectName: "Linear Integration",
+      projectColor: "#5E6AD2",
     },
     {
       id: "2",
@@ -56,6 +70,9 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
       duration: 1800,
       startTime: new Date(Date.now() - 3600000),
       endTime: new Date(Date.now() - 1800000),
+      projectId: "2",
+      projectName: "Frontend Development",
+      projectColor: "#03BB85",
     },
   ]);
   const [startTime, setStartTime] = useState<Date | null>(null);
@@ -79,12 +96,16 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
 
   const handleStop = useCallback(() => {
     if (startTime && elapsedTime > 0) {
+      const selectedProject = mockProjects.find((p) => p.id === selectedProjectId);
       const newEntry: TimeEntry = {
         id: Date.now().toString(),
         description: description || "No description",
         duration: elapsedTime,
         startTime: startTime,
         endTime: new Date(),
+        projectId: selectedProjectId || undefined,
+        projectName: selectedProject?.name,
+        projectColor: selectedProject?.color,
       };
       setEntries((prev) => [newEntry, ...prev]);
     }
@@ -92,7 +113,7 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
     setElapsedTime(0);
     setDescription("");
     setStartTime(null);
-  }, [startTime, elapsedTime, description]);
+  }, [startTime, elapsedTime, description, selectedProjectId]);
 
   const handleDeleteEntry = useCallback((id: string) => {
     setEntries((prev) => prev.filter((entry) => entry.id !== id));
@@ -190,6 +211,17 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
             <Timer className="h-4 w-4" />
             <span>Total: {formatDuration(totalTrackedTime + (isRunning ? elapsedTime : 0))}</span>
           </div>
+        </div>
+
+        {/* Project Selector */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">Clockify Project</label>
+          <ProjectSelector
+            projects={mockProjects}
+            selectedProjectId={selectedProjectId}
+            onProjectChange={setSelectedProjectId}
+            disabled={isRunning}
+          />
         </div>
 
         {/* Description Input */}
