@@ -1,11 +1,12 @@
 import { TimeTrackingWidget } from "@/components/TimeTrackingWidget";
+import { ThemeSelector } from "@/components/ThemeSelector";
 import { Clock, Zap } from "lucide-react";
 
 const Index = () => {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background transition-colors duration-200">
       {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+      <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="container flex items-center justify-between h-14 px-4">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
@@ -20,7 +21,7 @@ const Index = () => {
             <div className="h-4 w-px bg-border" />
             <span className="text-sm font-medium">Clockify for Linear</span>
           </div>
-          <span className="text-xs text-muted-foreground">Time Tracking Widget</span>
+          <ThemeSelector />
         </div>
       </header>
 
