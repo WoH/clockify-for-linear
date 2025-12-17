@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Key, Check, Eye, EyeOff } from "lucide-react";
+import { Key, Eye, EyeOff, LogOut } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 const API_KEY_STORAGE_KEY = "clockify_api_key";
@@ -28,20 +28,14 @@ export function useClockifyApiKey() {
   return { apiKey, saveApiKey, clearApiKey, isConfigured: !!apiKey };
 }
 
-interface ApiKeySettingsProps {
+interface ApiKeySetupProps {
   onSave?: () => void;
 }
 
-export function ApiKeySettings({ onSave }: ApiKeySettingsProps) {
-  const { apiKey, saveApiKey, isConfigured } = useClockifyApiKey();
+export function ApiKeySetup({ onSave }: ApiKeySetupProps) {
+  const { saveApiKey } = useClockifyApiKey();
   const [inputValue, setInputValue] = useState("");
   const [showKey, setShowKey] = useState(false);
-
-  useEffect(() => {
-    if (apiKey) {
-      setInputValue(apiKey);
-    }
-  }, [apiKey]);
 
   const handleSave = () => {
     if (!inputValue.trim()) {
@@ -61,53 +55,89 @@ export function ApiKeySettings({ onSave }: ApiKeySettingsProps) {
     onSave?.();
   };
 
-  const maskedValue = inputValue ? "•".repeat(Math.min(inputValue.length, 20)) + inputValue.slice(-4) : "";
-
   return (
-    <div className="space-y-2">
-      <Label htmlFor="api-key" className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-        <Key className="h-3 w-3" />
-        Clockify API Key
-      </Label>
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Input
-            id="api-key"
-            type={showKey ? "text" : "password"}
-            placeholder="Enter your API key"
-            value={showKey ? inputValue : (inputValue ? maskedValue : "")}
-            onChange={(e) => setInputValue(e.target.value)}
-            className="text-xs h-8 pr-8 font-mono"
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="absolute right-0 top-0 h-8 w-8"
-            onClick={() => setShowKey(!showKey)}
-          >
-            {showKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-          </Button>
+    <div className="space-y-3 py-2">
+      <div className="text-center space-y-1">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-clockify mx-auto">
+          <Key className="h-5 w-5 text-clockify-foreground" />
+        </div>
+        <h3 className="font-medium text-sm">Connect to Clockify</h3>
+        <p className="text-[10px] text-muted-foreground">
+          Enter your API key to start tracking time
+        </p>
+      </div>
+      
+      <div className="space-y-2">
+        <Label htmlFor="api-key" className="text-xs font-medium text-muted-foreground">
+          API Key
+        </Label>
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Input
+              id="api-key"
+              type={showKey ? "text" : "password"}
+              placeholder="Enter your API key"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              className="text-xs h-8 pr-8 font-mono"
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="absolute right-0 top-0 h-8 w-8"
+              onClick={() => setShowKey(!showKey)}
+            >
+              {showKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+            </Button>
+          </div>
         </div>
         <Button
-          size="sm"
           onClick={handleSave}
-          className="h-8 px-3 bg-clockify hover:bg-clockify/90 text-clockify-foreground"
+          className="w-full h-8 text-xs bg-clockify hover:bg-clockify/90 text-clockify-foreground"
         >
-          {isConfigured ? <Check className="h-3 w-3" /> : "Save"}
+          Save & Connect
         </Button>
+        <p className="text-[10px] text-muted-foreground text-center">
+          Get your API key from{" "}
+          <a
+            href="https://clockify.me/user/settings"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-clockify hover:underline"
+          >
+            Clockify Settings
+          </a>
+        </p>
       </div>
-      <p className="text-[10px] text-muted-foreground">
-        Get your API key from{" "}
-        <a
-          href="https://clockify.me/user/settings"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-clockify hover:underline"
-        >
-          Clockify Settings
-        </a>
-      </p>
     </div>
+  );
+}
+
+interface LogoutButtonProps {
+  className?: string;
+}
+
+export function LogoutButton({ className }: LogoutButtonProps) {
+  const { clearApiKey } = useClockifyApiKey();
+
+  const handleLogout = () => {
+    clearApiKey();
+    toast({
+      title: "Logged out",
+      description: "Your Clockify API key has been removed",
+    });
+  };
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className={className}
+      onClick={handleLogout}
+      title="Disconnect Clockify"
+    >
+      <LogOut className="h-3.5 w-3.5" />
+    </Button>
   );
 }

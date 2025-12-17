@@ -4,11 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Play, Square, Clock, ExternalLink, Timer, Settings } from "lucide-react";
+import { Play, Square, Clock, ExternalLink, Timer } from "lucide-react";
 import { TimeEntryList, TimeEntry } from "./TimeEntryList";
 import { ProjectSelector, ClockifyProject } from "./ProjectSelector";
-import { ApiKeySettings, useClockifyApiKey } from "./ApiKeySettings";
+import { ApiKeySetup, LogoutButton, useClockifyApiKey } from "./ApiKeySettings";
 import { cn } from "@/lib/utils";
 
 interface LinearIssue {
@@ -55,7 +54,6 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
   const [elapsedTime, setElapsedTime] = useState(0);
   const [description, setDescription] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>("1");
-  const [showSettings, setShowSettings] = useState(false);
   const { isConfigured } = useClockifyApiKey();
   const [entries, setEntries] = useState<TimeEntry[]>([
     {
@@ -147,6 +145,27 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
     }
   };
 
+  // Show setup screen if not configured
+  if (!isConfigured) {
+    return (
+      <Card className={cn("w-full max-w-md shadow-lg", className)}>
+        <CardHeader className="pb-2 pt-3 px-3">
+          <div className="flex items-center justify-center gap-1.5">
+            <div className="flex h-6 w-6 items-center justify-center rounded bg-linear">
+              <span className="text-[10px] font-bold text-linear-foreground">Li</span>
+            </div>
+            <div className="flex h-6 w-6 items-center justify-center rounded bg-clockify">
+              <Clock className="h-3 w-3 text-clockify-foreground" />
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="px-3 pb-3">
+          <ApiKeySetup />
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className={cn("w-full max-w-md shadow-lg", className)}>
       <CardHeader className="pb-2 pt-3 px-3">
@@ -159,33 +178,11 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
               <Clock className="h-3 w-3 text-clockify-foreground" />
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            {!isConfigured && (
-              <Badge variant="outline" className="text-[10px] text-warning border-warning/30">
-                Setup needed
-              </Badge>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => setShowSettings(!showSettings)}
-            >
-              <Settings className="h-3.5 w-3.5" />
-            </Button>
-          </div>
+          <LogoutButton className="h-6 w-6" />
         </div>
       </CardHeader>
 
       <CardContent className="space-y-3 px-3 pb-3">
-        {/* Settings Panel */}
-        <Collapsible open={showSettings || !isConfigured}>
-          <CollapsibleContent className="space-y-3">
-            <ApiKeySettings onSave={() => setShowSettings(false)} />
-            <Separator />
-          </CollapsibleContent>
-        </Collapsible>
-
         {/* Issue Context */}
         <div className="rounded-md border bg-muted/30 p-2">
           <div className="flex items-start justify-between gap-2">
@@ -263,7 +260,6 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
             <Button 
               onClick={handleStart} 
               className="flex-1 h-8 text-xs bg-clockify hover:bg-clockify/90 text-clockify-foreground"
-              disabled={!isConfigured}
             >
               <Play className="mr-1.5 h-3 w-3" />
               Start Timer
