@@ -306,23 +306,19 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
   const handleStart = useCallback(async () => {
     if (!apiKey) return;
 
-    const linearIssue = currentLinearIssue || issue;
-    const desc = description || (linearIssue ? `${linearIssue.identifier}: ${linearIssue.title}` : "");
-
     // Start timer in Clockify
     const result = await startTimer(apiKey, {
-      description: desc,
+      description,
       projectId: selectedProjectId,
     });
 
     if (result.entry) {
       setIsRunning(true);
       setClockifyEntryId(result.entry.id);
-      setDescription(desc);
       timerStartRef.current = new Date(result.entry.timeInterval.start).getTime();
       setElapsedTime(0);
     }
-  }, [apiKey, description, selectedProjectId, currentLinearIssue, issue]);
+  }, [apiKey, description, selectedProjectId]);
 
   const handleStop = useCallback(async () => {
     if (!apiKey) return;
@@ -334,7 +330,7 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
     setClockifyEntryId(null);
     timerStartRef.current = null;
     setElapsedTime(0);
-    setDescription("");
+    setDescription(activeIssue?.identifier || "");
 
     // Add the completed entry to the local list
     if (result.entry) {
@@ -357,7 +353,7 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
 
       setEntries((prev) => [newEntry, ...prev]);
     }
-  }, [apiKey, projects]);
+  }, [apiKey, projects, activeIssue]);
 
   // Abort/discard the current timer without saving
   const handleAbort = useCallback(async () => {
@@ -369,11 +365,11 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
     setClockifyEntryId(null);
     timerStartRef.current = null;
     setElapsedTime(0);
-    setDescription("");
+    setDescription(activeIssue?.identifier || "");
 
     // Reset prefill so it can re-prefill for the current issue
     prefilledForIssueRef.current = null;
-  }, [apiKey, clockifyEntryId]);
+  }, [apiKey, clockifyEntryId, activeIssue]);
 
   // Handle project change - update Clockify if timer is running
   const handleProjectChange = useCallback(async (projectId: string | null) => {
@@ -579,8 +575,15 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
         <Input
           placeholder="What are you working on?"
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          disabled={isRunning}
+          onChange={(e) => {
+            setDescription(e.target.value);
+            // Update Clockify if timer is running (debounced via onBlur)
+          }}
+          onBlur={() => {
+            if (isRunning && clockifyEntryId && apiKey) {
+              updateRunningTimer(apiKey, clockifyEntryId, { description });
+            }
+          }}
           className="text-xs h-8"
         />
 

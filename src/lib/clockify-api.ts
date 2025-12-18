@@ -1,4 +1,5 @@
 const CLOCKIFY_API_BASE = "https://api.clockify.me/api/v1";
+const CLOCKIFY_APP_API_BASE = "https://app.clockify.me/api";
 
 export interface ClockifyUser {
   id: string;
@@ -16,6 +17,7 @@ export interface ClockifyProject {
   clientName?: string;
   workspaceId: string;
   archived: boolean;
+  favorite?: boolean;
 }
 
 export interface ClockifyWorkspace {
@@ -34,6 +36,39 @@ export interface ClockifyTimeEntry {
   workspaceId: string;
   projectId: string | null;
   userId: string;
+}
+
+export interface ClockifyProjectPickerProject {
+  id: string;
+  name: string;
+  color: string;
+  clientId: string | null;
+  client: {
+    id: string;
+    name: string;
+    workspaceId: string;
+    archived: boolean;
+  } | null;
+  workspaceId: string;
+  billable: boolean;
+  archived: boolean;
+  taskCount: number;
+  favorite: boolean;
+}
+
+export interface ClockifyApiProject {
+  id: string;
+  name: string;
+  color: string;
+  clientId: string | null;
+  clientName: string | null;
+  workspaceId: string;
+  billable: boolean;
+  archived: boolean;
+  public: boolean;
+  template: boolean;
+  note: string;
+  duration: string;
 }
 
 export class ClockifyAPI {
@@ -60,6 +95,21 @@ export class ClockifyAPI {
     return response.json();
   }
 
+  private async fetchApp<T>(endpoint: string): Promise<T> {
+    const response = await fetch(`${CLOCKIFY_APP_API_BASE}${endpoint}`, {
+      headers: {
+        "X-Api-Key": this.apiKey,
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Clockify App API error: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
   async getUser(): Promise<ClockifyUser> {
     return this.fetch<ClockifyUser>("/user");
   }
@@ -68,10 +118,48 @@ export class ClockifyAPI {
     return this.fetch<ClockifyWorkspace[]>("/workspaces");
   }
 
+  async getFavoriteProjectIds(workspaceId: string): Promise<Set<string>> {
+    const PAGE_SIZE = 100;
+    const allIds: string[] = [];
+    let page = 1;
+
+    try {
+      while (true) {
+        const favorites = await this.fetchApp<ClockifyProjectPickerProject[]>(
+          `/workspaces/${workspaceId}/project-picker/projects?favorites=true&archived=false&page=${page}&page-size=${PAGE_SIZE}`
+        );
+        allIds.push(...favorites.map((p) => p.id));
+        if (favorites.length < PAGE_SIZE) break;
+        page++;
+      }
+      return new Set(allIds);
+    } catch {
+      return new Set(allIds);
+    }
+  }
+
+  async getAllProjects(workspaceId: string): Promise<ClockifyApiProject[]> {
+    const PAGE_SIZE = 100;
+    const allProjects: ClockifyApiProject[] = [];
+    let page = 1;
+
+    while (true) {
+      const projects = await this.fetch<ClockifyApiProject[]>(
+        `/workspaces/${workspaceId}/projects?archived=false&page=${page}&page-size=${PAGE_SIZE}`
+      );
+      allProjects.push(...projects);
+      if (projects.length < PAGE_SIZE) break;
+      page++;
+    }
+    return allProjects;
+  }
+
   async getProjects(workspaceId: string): Promise<ClockifyProject[]> {
-    const projects = await this.fetch<any[]>(
-      `/workspaces/${workspaceId}/projects?archived=false&page-size=500`
-    );
+    // Fetch projects and favorites in parallel
+    const [projects, favoriteIds] = await Promise.all([
+      this.getAllProjects(workspaceId),
+      this.getFavoriteProjectIds(workspaceId),
+    ]);
 
     return projects.map((p) => ({
       id: p.id,
@@ -81,6 +169,7 @@ export class ClockifyAPI {
       clientName: p.clientName,
       workspaceId: p.workspaceId,
       archived: p.archived,
+      favorite: favoriteIds.has(p.id),
     }));
   }
 
