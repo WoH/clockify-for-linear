@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, LogOut, Loader2 } from "lucide-react";
-import { toast } from "@/hooks/use-toast";
+import { toast } from "@/components/ui/use-toast";
 
 // Check if we're in a Chrome extension context
 const isChromeExtension = typeof chrome !== "undefined" && chrome.runtime?.id;
