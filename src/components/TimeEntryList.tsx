@@ -45,7 +45,7 @@ export function TimeEntryList({ entries, onDelete }: TimeEntryListProps) {
         <h4 className="text-xs font-medium">Recent Entries</h4>
         <span className="text-[10px] text-muted-foreground">{entries.length} entries</span>
       </div>
-      <ScrollArea className="h-[120px] pr-2">
+      <ScrollArea className="h-[120px] pr-2 overflow-x-hidden">
         <div className="space-y-1.5">
           {entries.map((entry) => (
             <div

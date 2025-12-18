@@ -11,6 +11,8 @@
     "isolatedModules": true,
     "moduleDetection": "force",
     "noEmit": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
 
     /* Linting */
     "strict": true,
@@ -18,5 +20,5 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "public/manifest.json"]
 }

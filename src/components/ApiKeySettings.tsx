@@ -2,40 +2,82 @@ import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Eye, EyeOff, LogOut } from "lucide-react";
+import { Eye, EyeOff, LogOut, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
-import andLogo from "@/assets/and-logo.svg";
 
-const API_KEY_STORAGE_KEY = "clockify_api_key";
+// Check if we're in a Chrome extension context
+const isChromeExtension = typeof chrome !== "undefined" && chrome.runtime?.id;
 
-// Simple event emitter for API key changes
-const listeners = new Set<() => void>();
-const notifyListeners = () => listeners.forEach((l) => l());
+const CLOCKIFY_API_BASE = "https://api.clockify.me/api/v1";
+
+// Validate API key by fetching current user
+async function validateClockifyApiKey(apiKey: string): Promise<{ valid: boolean; userName?: string; error?: string }> {
+  try {
+    const response = await fetch(`${CLOCKIFY_API_BASE}/user`, {
+      headers: {
+        "X-Api-Key": apiKey,
+      },
+    });
+
+    if (response.ok) {
+      const user = await response.json();
+      return { valid: true, userName: user.name };
+    } else if (response.status === 401) {
+      return { valid: false, error: "Invalid API key" };
+    } else {
+      return { valid: false, error: `API error: ${response.status}` };
+    }
+  } catch (error) {
+    return { valid: false, error: "Network error. Please check your connection." };
+  }
+}
 
 export function useClockifyApiKey() {
-  const [apiKey, setApiKey] = useState<string | null>(() => 
-    localStorage.getItem(API_KEY_STORAGE_KEY)
-  );
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const update = () => setApiKey(localStorage.getItem(API_KEY_STORAGE_KEY));
-    listeners.add(update);
-    return () => { listeners.delete(update); };
+    // Load API key on mount
+    if (isChromeExtension) {
+      chrome.runtime.sendMessage({ type: "GET_API_KEY" }, (response) => {
+        if (response?.success) {
+          setApiKey(response.data as string | null);
+        }
+        setIsLoading(false);
+      });
+    } else {
+      setApiKey(localStorage.getItem("clockify_api_key"));
+      setIsLoading(false);
+    }
   }, []);
 
   const saveApiKey = useCallback((key: string) => {
-    localStorage.setItem(API_KEY_STORAGE_KEY, key);
-    setApiKey(key);
-    notifyListeners();
+    if (isChromeExtension) {
+      chrome.runtime.sendMessage({ type: "SET_API_KEY", payload: { apiKey: key } }, (response) => {
+        if (response?.success) {
+          setApiKey(key);
+        }
+      });
+    } else {
+      localStorage.setItem("clockify_api_key", key);
+      setApiKey(key);
+    }
   }, []);
 
   const clearApiKey = useCallback(() => {
-    localStorage.removeItem(API_KEY_STORAGE_KEY);
-    setApiKey(null);
-    notifyListeners();
+    if (isChromeExtension) {
+      chrome.runtime.sendMessage({ type: "CLEAR_API_KEY" }, (response) => {
+        if (response?.success) {
+          setApiKey(null);
+        }
+      });
+    } else {
+      localStorage.removeItem("clockify_api_key");
+      setApiKey(null);
+    }
   }, []);
 
-  return { apiKey, saveApiKey, clearApiKey, isConfigured: !!apiKey };
+  return { apiKey, saveApiKey, clearApiKey, isConfigured: !!apiKey, isLoading };
 }
 
 interface ApiKeySetupProps {
@@ -46,8 +88,9 @@ export function ApiKeySetup({ onSave }: ApiKeySetupProps) {
   const { saveApiKey } = useClockifyApiKey();
   const [inputValue, setInputValue] = useState("");
   const [showKey, setShowKey] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!inputValue.trim()) {
       toast({
         title: "API Key Required",
@@ -57,10 +100,23 @@ export function ApiKeySetup({ onSave }: ApiKeySetupProps) {
       return;
     }
 
+    setIsValidating(true);
+    const result = await validateClockifyApiKey(inputValue.trim());
+    setIsValidating(false);
+
+    if (!result.valid) {
+      toast({
+        title: "Invalid API Key",
+        description: result.error || "Please check your API key and try again",
+        variant: "destructive",
+      });
+      return;
+    }
+
     saveApiKey(inputValue.trim());
     toast({
-      title: "API Key Saved",
-      description: "Your Clockify API key has been saved securely",
+      title: "Connected to Clockify",
+      description: `Welcome, ${result.userName}!`,
     });
     onSave?.();
   };
@@ -73,7 +129,7 @@ export function ApiKeySetup({ onSave }: ApiKeySetupProps) {
           Enter your API key to start tracking time
         </p>
       </div>
-      
+
       <div className="space-y-2">
         <Label htmlFor="api-key" className="text-xs font-medium text-muted-foreground">
           API Key
@@ -87,6 +143,7 @@ export function ApiKeySetup({ onSave }: ApiKeySetupProps) {
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               className="text-xs h-8 pr-8 font-mono"
+              disabled={isValidating}
             />
             <Button
               type="button"
@@ -94,6 +151,7 @@ export function ApiKeySetup({ onSave }: ApiKeySetupProps) {
               size="icon"
               className="absolute right-0 top-0 h-8 w-8"
               onClick={() => setShowKey(!showKey)}
+              disabled={isValidating}
             >
               {showKey ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
             </Button>
@@ -102,8 +160,16 @@ export function ApiKeySetup({ onSave }: ApiKeySetupProps) {
         <Button
           onClick={handleSave}
           className="w-full h-8 text-xs bg-clockify hover:bg-clockify/90 text-clockify-foreground"
+          disabled={isValidating}
         >
-          Save & Connect
+          {isValidating ? (
+            <>
+              <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+              Validating...
+            </>
+          ) : (
+            "Save & Connect"
+          )}
         </Button>
         <p className="text-[10px] text-muted-foreground text-center">
           Get your API key from{" "}
@@ -123,9 +189,10 @@ export function ApiKeySetup({ onSave }: ApiKeySetupProps) {
 
 interface LogoutButtonProps {
   className?: string;
+  onLogout?: () => void;
 }
 
-export function LogoutButton({ className }: LogoutButtonProps) {
+export function LogoutButton({ className, onLogout }: LogoutButtonProps) {
   const { clearApiKey } = useClockifyApiKey();
 
   const handleLogout = () => {
@@ -134,6 +201,7 @@ export function LogoutButton({ className }: LogoutButtonProps) {
       title: "Logged out",
       description: "Your Clockify API key has been removed",
     });
+    onLogout?.();
   };
 
   return (
