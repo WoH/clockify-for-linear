@@ -144,15 +144,6 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
 
   // Pre-fill description and auto-match project based on the Linear issue
   useEffect(() => {
-    console.log("[Clockify] Pre-fill effect:", {
-      isRunning,
-      activeIssue: activeIssue?.identifier,
-      activeIssueTitle: activeIssue?.title,
-      projectsCount: projects.length,
-      projectNames: projects.map(p => p.name),
-      prefilled: prefilledForIssueRef.current
-    });
-
     // Only pre-fill when not running a timer and we have both issue and projects
     if (isRunning || !activeIssue || projects.length === 0) return;
 
@@ -172,13 +163,6 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
     const parenMatch = activeIssue.title.match(/\(([A-Za-z]+\d+)\)/);
     const projectCode = (startMatch?.[1] || parenMatch?.[1])?.toUpperCase();
 
-    console.log("[Clockify] Project matching:", {
-      title: activeIssue.title,
-      startMatch: startMatch?.[1],
-      parenMatch: parenMatch?.[1],
-      projectCode
-    });
-
     if (projectCode) {
       // Find project with matching name (case-insensitive, flexible matching)
       const matchingProject = projects.find((p) => {
@@ -187,7 +171,6 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
                projectName.startsWith(projectCode) ||
                projectCode.startsWith(projectName);
       });
-      console.log("[Clockify] Matched project:", matchingProject?.name || "none");
       if (matchingProject) {
         setSelectedProjectId(matchingProject.id);
       }
@@ -297,31 +280,25 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
       setIsLoading(false);
     });
 
-    // Get current Linear issue from content script detection
-    const fetchCurrentIssue = () => {
-      chrome.runtime.sendMessage({ type: "GET_CURRENT_LINEAR_ISSUE" }, (response) => {
-        if (response?.success && response.data) {
-          setCurrentLinearIssue(response.data as LinearIssue);
-        }
-      });
-    };
+    // Get current Linear issue from content script detection (once on load)
+    chrome.runtime.sendMessage({ type: "GET_CURRENT_LINEAR_ISSUE" }, (response) => {
+      if (response?.success && response.data) {
+        setCurrentLinearIssue(response.data as LinearIssue);
+      }
+    });
 
-    fetchCurrentIssue();
-
-    // Continuously poll for issue updates (SPA navigation detection)
-    const issueInterval = setInterval(fetchCurrentIssue, 1000);
-
-    // Listen for timer ticks from background
-    const handleMessage = (message: { type: string; elapsedTime?: number }) => {
+    // Listen for messages from background
+    const handleMessage = (message: { type: string; elapsedTime?: number; payload?: LinearIssue }) => {
       if (message.type === "TIMER_TICK" && message.elapsedTime !== undefined) {
         setElapsedTime(message.elapsedTime);
+      } else if (message.type === "LINEAR_ISSUE_UPDATED" && message.payload) {
+        setCurrentLinearIssue(message.payload);
       }
     };
 
     chrome.runtime.onMessage.addListener(handleMessage);
 
     return () => {
-      clearInterval(issueInterval);
       chrome.runtime.onMessage.removeListener(handleMessage);
     };
   }, []);

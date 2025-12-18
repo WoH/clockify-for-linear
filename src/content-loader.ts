@@ -23,7 +23,6 @@ function parseLinearIssue() {
                    document.querySelector('[class*="StatusBadge"]');
   const status = statusEl?.textContent?.trim() || "Unknown";
 
-  console.log("[Clockify] Parsed issue:", { identifier, title, status });
   return { id: identifier, identifier, title, status, priority: 2, url };
 }
 
@@ -129,14 +128,19 @@ function init() {
 
   detectWithRetry();
 
-  // Poll URL for SPA navigation (more reliable than MutationObserver)
+  // Watch for SPA navigation using MutationObserver
   let lastUrl = window.location.href;
-  setInterval(() => {
+  const observer = new MutationObserver(() => {
     if (window.location.href !== lastUrl) {
       lastUrl = window.location.href;
       detectWithRetry();
     }
-  }, 500);
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+  });
 }
 
 // Run when DOM is ready
@@ -145,5 +149,3 @@ if (document.readyState === "loading") {
 } else {
   init();
 }
-
-console.log("Clockify for Linear: Content loader initialized");

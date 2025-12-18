@@ -166,6 +166,10 @@ async function handleMessage(
       case "LINEAR_ISSUE_DETECTED": {
         // Store the current Linear issue context for later use
         await chrome.storage.local.set({ currentLinearIssue: message.payload });
+        // Broadcast to widget iframe
+        chrome.runtime.sendMessage({ type: "LINEAR_ISSUE_UPDATED", payload: message.payload }).catch(() => {
+          // Widget might not be open, that's ok
+        });
         sendResponse({ success: true });
         break;
       }
