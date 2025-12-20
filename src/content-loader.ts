@@ -72,7 +72,7 @@ function createIframe(): HTMLIFrameElement {
   return iframe;
 }
 
-// Listen for minimize state changes from widget
+// Listen for messages from widget iframe
 window.addEventListener("message", (event) => {
   if (event.data?.type === "CLOCKIFY_MINIMIZED") {
     const container = document.getElementById(CONTAINER_ID);
@@ -98,12 +98,15 @@ function init() {
   // Track active retry interval to cancel on new navigation
   let activeRetryInterval: ReturnType<typeof setInterval> | null = null;
 
-  // Send issue update to background
+  // Send issue update to background AND directly to iframe
   const notifyIssue = (issue: ReturnType<typeof parseLinearIssue>) => {
     if (issue) {
       lastDetectedIdentifier = issue.identifier;
       lastDetectedTitle = issue.title;
+      // Send to background for storage
       chrome.runtime.sendMessage({ type: "LINEAR_ISSUE_DETECTED", payload: issue });
+      // Send directly to iframe (Firefox fix - runtime.sendMessage doesn't reach iframes)
+      iframe.contentWindow?.postMessage({ type: "LINEAR_ISSUE_UPDATED", payload: issue }, "*");
     }
   };
 

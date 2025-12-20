@@ -5,8 +5,8 @@ import { Label } from "@/components/ui/label";
 import { Eye, EyeOff, LogOut, Loader2 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 
-// Check if we're in a Chrome extension context
-const isChromeExtension = typeof chrome !== "undefined" && chrome.runtime?.id;
+// Check if we're in an extension context
+const isExtension = typeof chrome !== "undefined" && chrome.runtime?.id;
 
 const CLOCKIFY_API_BASE = "https://api.clockify.me/api/v1";
 
@@ -38,7 +38,7 @@ export function useClockifyApiKey() {
 
   useEffect(() => {
     // Load API key on mount
-    if (isChromeExtension) {
+    if (isExtension) {
       chrome.runtime.sendMessage({ type: "GET_API_KEY" }, (response) => {
         if (response?.success) {
           setApiKey(response.data as string | null);
@@ -52,7 +52,7 @@ export function useClockifyApiKey() {
   }, []);
 
   const saveApiKey = useCallback((key: string) => {
-    if (isChromeExtension) {
+    if (isExtension) {
       chrome.runtime.sendMessage({ type: "SET_API_KEY", payload: { apiKey: key } }, (response) => {
         if (response?.success) {
           setApiKey(key);
@@ -65,7 +65,7 @@ export function useClockifyApiKey() {
   }, []);
 
   const clearApiKey = useCallback(() => {
-    if (isChromeExtension) {
+    if (isExtension) {
       chrome.runtime.sendMessage({ type: "CLEAR_API_KEY" }, (response) => {
         if (response?.success) {
           setApiKey(null);

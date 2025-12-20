@@ -3,6 +3,12 @@
   "description": "Display time tracking UI in Linear issues using Clockify",
   "version": "1.0.0",
   "manifest_version": 3,
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "clockify-for-linear@and-solution.de",
+      "strict_min_version": "109.0"
+    }
+  },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -31,7 +37,9 @@
     "storage"
   ],
   "host_permissions": [
-    "https://linear.app/*"
+    "https://linear.app/*",
+    "https://api.clockify.me/*",
+    "https://app.clockify.me/*"
   ],
   "web_accessible_resources": [
     {

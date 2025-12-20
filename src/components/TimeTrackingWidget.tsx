@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Play, Square, ExternalLink, Timer, Loader2, Trash2, Minimize2, Maximize2 } from "lucide-react";
+import { Play, Square, ExternalLink, Timer, Loader2, Trash2, Minimize2 } from "lucide-react";
 import { TimeEntryList, TimeEntry } from "./TimeEntryList";
 import { ProjectSelector, ClockifyProject } from "./ProjectSelector";
 import { ApiKeySetup, LogoutButton } from "./ApiKeySettings";
@@ -43,8 +43,8 @@ const formatDuration = (seconds: number): string => {
   return `${mins}m`;
 };
 
-// Check if we're in a Chrome extension context
-const isChromeExtension = typeof chrome !== "undefined" && chrome.runtime?.id;
+// Check if we're in an extension context
+const isExtension = typeof chrome !== "undefined" && chrome.runtime?.id;
 
 // Convert extension TimeEntry to component TimeEntry
 function convertEntry(entry: ExtTimeEntry): TimeEntry {
@@ -89,7 +89,7 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
 
   // Load API key
   useEffect(() => {
-    if (isChromeExtension) {
+    if (isExtension) {
       chrome.runtime.sendMessage({ type: "GET_API_KEY" }, (response) => {
         if (response?.success) {
           setApiKey(response.data as string | null);
@@ -104,7 +104,7 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
 
   // Callback for when user logs in
   const handleLogin = useCallback(() => {
-    if (isChromeExtension) {
+    if (isExtension) {
       chrome.runtime.sendMessage({ type: "GET_API_KEY" }, (response) => {
         if (response?.success) {
           setApiKey(response.data as string | null);
@@ -252,7 +252,7 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
 
   // Load initial state from background
   useEffect(() => {
-    if (!isChromeExtension) {
+    if (!isExtension) {
       setIsLoading(false);
       return;
     }
@@ -298,8 +298,17 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
 
     chrome.runtime.onMessage.addListener(handleMessage);
 
+    // Also listen for postMessage from content script (Firefox fix)
+    const handleWindowMessage = (event: MessageEvent) => {
+      if (event.data?.type === "LINEAR_ISSUE_UPDATED" && event.data?.payload) {
+        setCurrentLinearIssue(event.data.payload);
+      }
+    };
+    window.addEventListener("message", handleWindowMessage);
+
     return () => {
       chrome.runtime.onMessage.removeListener(handleMessage);
+      window.removeEventListener("message", handleWindowMessage);
     };
   }, []);
 
@@ -382,7 +391,7 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
   }, [isRunning, clockifyEntryId, apiKey]);
 
   const handleDeleteEntry = useCallback((id: string) => {
-    if (isChromeExtension) {
+    if (isExtension) {
       chrome.runtime.sendMessage({ type: "DELETE_ENTRY", payload: { id } }, (response) => {
         if (response?.success) {
           const extEntries = response.data as ExtTimeEntry[];
