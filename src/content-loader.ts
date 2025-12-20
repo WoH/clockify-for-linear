@@ -23,11 +23,7 @@ function parseLinearIssue() {
   const firstP = mainContent?.querySelector('p');
   const title = firstP?.textContent?.trim() || identifier;
 
-  const statusEl = document.querySelector('[data-testid="issue-status"]') ||
-                   document.querySelector('[class*="StatusBadge"]');
-  const status = statusEl?.textContent?.trim() || "Unknown";
-
-  return { id: identifier, identifier, title, status, priority: 2, url };
+  return { id: identifier, identifier, title, url };
 }
 
 function injectStyles() {
@@ -45,7 +41,7 @@ function injectStyles() {
 
     #${CONTAINER_ID}.expanded {
       width: 400px;
-      height: 520px;
+      height: 475px;
     }
 
     #${IFRAME_ID} {

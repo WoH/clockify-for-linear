@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Play, Square, ExternalLink, Timer, Loader2, Trash2, Minimize2 } from "lucide-react";
+import { Play, Square, Timer, Loader2, Trash2, Minimize2 } from "lucide-react";
 import { TimeEntryList, TimeEntry } from "./TimeEntryList";
 import { ProjectSelector, ClockifyProject } from "./ProjectSelector";
 import { ApiKeySetup, LogoutButton } from "./ApiKeySettings";
@@ -17,9 +17,6 @@ interface LinearIssue {
   id: string;
   identifier: string;
   title: string;
-  status: string;
-  priority: number;
-  assignee?: string;
 }
 
 interface TimeTrackingWidgetProps {
@@ -407,26 +404,10 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
     id: "1",
     identifier: "ENG-142",
     title: "Implement Clockify time tracking widget",
-    status: "In Progress",
-    priority: 2,
-    assignee: "You",
   };
 
   // Use detected Linear issue from content script, then props, then default (for display only)
   const displayIssue = activeIssue || defaultIssue;
-
-  const getPriorityColor = (priority: number) => {
-    switch (priority) {
-      case 1:
-        return "bg-destructive/10 text-destructive border-destructive/20";
-      case 2:
-        return "bg-warning/10 text-warning border-warning/20";
-      case 3:
-        return "bg-success/10 text-success border-success/20";
-      default:
-        return "bg-muted text-muted-foreground";
-    }
-  };
 
   // Minimized bubble view
   if (isMinimized) {
@@ -500,38 +481,13 @@ export function TimeTrackingWidget({ issue, className }: TimeTrackingWidgetProps
       <CardContent className="space-y-3 px-3 pb-3">
         {/* Issue Context */}
         <div className="rounded-md border bg-muted/30 p-2">
-          <div className="flex items-start justify-between gap-2">
-            <div className="space-y-0.5 flex-1 min-w-0">
-              <div className="flex items-center gap-1.5">
-                <Badge variant="secondary" className="font-mono text-[10px] h-5 shrink-0">
-                  {displayIssue.identifier}
-                </Badge>
-                <Badge 
-                  variant="outline" 
-                  className={cn("text-[10px] h-5 shrink-0", getPriorityColor(displayIssue.priority))}
-                >
-                  P{displayIssue.priority}
-                </Badge>
-              </div>
-              <h3 className="font-medium text-xs leading-tight truncate">
-                {displayIssue.title}
-              </h3>
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-1.5 w-1.5 rounded-full bg-clockify" />
-                  {displayIssue.status}
-                </span>
-                {displayIssue.assignee && (
-                  <>
-                    <span>•</span>
-                    <span>{displayIssue.assignee}</span>
-                  </>
-                )}
-              </div>
-            </div>
-            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0">
-              <ExternalLink className="h-3 w-3" />
-            </Button>
+          <div className="space-y-0.5">
+            <Badge variant="secondary" className="font-mono text-[10px] h-5">
+              {displayIssue.identifier}
+            </Badge>
+            <h3 className="font-medium text-xs leading-tight truncate">
+              {displayIssue.title}
+            </h3>
           </div>
         </div>
 
