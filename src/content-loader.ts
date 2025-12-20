@@ -3,6 +3,10 @@
 const CONTAINER_ID = "clockify-linear-container";
 const IFRAME_ID = "clockify-linear-iframe";
 
+// Track the last detected issue to avoid stale titles
+let lastDetectedIdentifier: string | null = null;
+let lastDetectedTitle: string | null = null;
+
 function isLinearIssuePage(): boolean {
   return /linear\.app\/[^/]+\/issue\/[A-Z]+-\d+/.test(window.location.href);
 }
@@ -91,39 +95,79 @@ function init() {
   container.appendChild(iframe);
   document.body.appendChild(container);
 
-  // Detect Linear issue and notify background
-  const detectAndNotify = () => {
-    if (isLinearIssuePage()) {
-      const issue = parseLinearIssue();
-      if (issue) {
-        chrome.runtime.sendMessage({ type: "LINEAR_ISSUE_DETECTED", payload: issue });
-      }
-      container.style.display = "block";
-      return issue;
-    } else {
-      container.style.display = "none";
-      return null;
+  // Track active retry interval to cancel on new navigation
+  let activeRetryInterval: ReturnType<typeof setInterval> | null = null;
+
+  // Send issue update to background
+  const notifyIssue = (issue: ReturnType<typeof parseLinearIssue>) => {
+    if (issue) {
+      lastDetectedIdentifier = issue.identifier;
+      lastDetectedTitle = issue.title;
+      chrome.runtime.sendMessage({ type: "LINEAR_ISSUE_DETECTED", payload: issue });
     }
   };
 
-  // Initial detection with retry for title
-  const detectWithRetry = () => {
-    const issue = detectAndNotify();
+  // Check if the title looks valid (not stale)
+  const isTitleValid = (issue: NonNullable<ReturnType<typeof parseLinearIssue>>, previousTitle: string | null) => {
+    // Title is invalid if it equals the identifier (DOM not loaded yet)
+    if (issue.title === issue.identifier) return false;
+    // Title is invalid if it's the same as the previous issue's title (stale DOM)
+    if (previousTitle && issue.title === previousTitle) return false;
+    return true;
+  };
 
-    // Retry title detection if we only got the identifier (DOM might not be ready)
-    if (issue && issue.title === issue.identifier) {
-      let retries = 0;
-      const retryInterval = setInterval(() => {
-        retries++;
-        const newIssue = parseLinearIssue();
-        if (newIssue && newIssue.title !== newIssue.identifier) {
-          chrome.runtime.sendMessage({ type: "LINEAR_ISSUE_DETECTED", payload: newIssue });
-          clearInterval(retryInterval);
-        } else if (retries >= 10) {
-          clearInterval(retryInterval);
-        }
-      }, 500);
+  // Detect Linear issue and handle visibility
+  const detectWithRetry = () => {
+    // Cancel any pending retry from previous navigation
+    if (activeRetryInterval) {
+      clearInterval(activeRetryInterval);
+      activeRetryInterval = null;
     }
+
+    if (!isLinearIssuePage()) {
+      container.style.display = "none";
+      return;
+    }
+
+    container.style.display = "block";
+    const issue = parseLinearIssue();
+    if (!issue) return;
+
+    // Check if we switched to a different issue
+    const isNewIssue = issue.identifier !== lastDetectedIdentifier;
+    
+    // Remember the old title to detect stale DOM
+    const previousTitle = isNewIssue ? lastDetectedTitle : null;
+
+    // If title is valid, send immediately
+    if (isTitleValid(issue, previousTitle)) {
+      notifyIssue(issue);
+      return;
+    }
+
+    // Title might be stale - retry until DOM updates
+    let retries = 0;
+    activeRetryInterval = setInterval(() => {
+      retries++;
+      const newIssue = parseLinearIssue();
+      
+      if (newIssue && isTitleValid(newIssue, previousTitle)) {
+        notifyIssue(newIssue);
+        if (activeRetryInterval) {
+          clearInterval(activeRetryInterval);
+          activeRetryInterval = null;
+        }
+      } else if (retries >= 20) {
+        // After 20 retries (10 seconds), give up and use what we have
+        if (newIssue) {
+          notifyIssue(newIssue);
+        }
+        if (activeRetryInterval) {
+          clearInterval(activeRetryInterval);
+          activeRetryInterval = null;
+        }
+      }
+    }, 500);
   };
 
   detectWithRetry();
