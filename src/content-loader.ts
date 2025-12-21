@@ -7,6 +7,19 @@ const IFRAME_ID = "clockify-linear-iframe";
 let lastDetectedIdentifier: string | null = null;
 let lastDetectedTitle: string | null = null;
 
+// Detect Linear's theme from the document
+function detectLinearTheme(): "dark" | "light" {
+  // Linear uses class="dark" on the html element for dark mode
+  if (document.documentElement.classList.contains("dark")) {
+    return "dark";
+  }
+  // Also check for data-theme attribute as fallback
+  if (document.documentElement.getAttribute("data-theme") === "dark") {
+    return "dark";
+  }
+  return "light";
+}
+
 function isLinearIssuePage(): boolean {
   return /linear\.app\/[^/]+\/issue\/[A-Z]+-\d+/.test(window.location.href);
 }
@@ -41,7 +54,6 @@ function injectStyles() {
 
     #${CONTAINER_ID}.expanded {
       width: 400px;
-      height: 475px;
     }
 
     #${IFRAME_ID} {
@@ -73,7 +85,17 @@ window.addEventListener("message", (event) => {
   if (event.data?.type === "CLOCKIFY_MINIMIZED") {
     const container = document.getElementById(CONTAINER_ID);
     if (container) {
-      container.className = event.data.minimized ? "" : "expanded";
+      if (event.data.minimized) {
+        container.className = "";
+        container.style.height = ""; // Clear inline height so CSS 48px takes effect
+      } else {
+        container.className = "expanded";
+      }
+    }
+  } else if (event.data?.type === "CLOCKIFY_HEIGHT") {
+    const container = document.getElementById(CONTAINER_ID);
+    if (container && container.classList.contains("expanded")) {
+      container.style.height = `${event.data.height}px`;
     }
   }
 });
@@ -90,6 +112,24 @@ function init() {
   const iframe = createIframe();
   container.appendChild(iframe);
   document.body.appendChild(container);
+
+  // Send theme to iframe
+  const notifyTheme = () => {
+    const theme = detectLinearTheme();
+    iframe.contentWindow?.postMessage({ type: "CLOCKIFY_THEME", theme }, "*");
+  };
+
+  // Send initial theme once iframe loads
+  iframe.addEventListener("load", notifyTheme);
+
+  // Watch for theme changes on the html element
+  const themeObserver = new MutationObserver(() => {
+    notifyTheme();
+  });
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class", "data-theme"],
+  });
 
   // Track active retry interval to cancel on new navigation
   let activeRetryInterval: ReturnType<typeof setInterval> | null = null;
