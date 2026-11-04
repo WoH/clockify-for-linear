@@ -1,73 +1,42 @@
-# Welcome to your Lovable project
+# Clockify for Linear
 
-## Project info
+Chrome and Firefox (Manifest V3) extension that shows a small Clockify timer on Linear issue pages and in the toolbar popup. Clockify is the only source of truth for the running timer.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Behavior
 
-## How can I edit this code?
+- Open the toolbar popup and paste a Clockify API key. It is validated with `GET /user`, then stored in `chrome.storage.local` under `clockifyApiKey`. The key is never sent to content scripts or pages.
+- On `https://linear.app/<workspace>/issue/<KEY-n>` a floating widget (minimizable, follows Linear's theme) offers Start, Stop, Save changes and Discard (with confirmation). Description defaults to the issue key. A project is suggested only when exactly one project matches the code in the title.
+- Drafts are per issue (idle) or per running entry, and a periodic refresh never overwrites typing.
+- The popup shows the issue of the active Linear tab, or nothing.
+- The extension sends entry-addressed updates and deletions after a fresh read. If a write has an uncertain outcome, the affected account stays blocked until you press "Check Clockify".
 
-There are several ways of editing your application.
+## Known limits
 
-**Use Lovable**
+- Clockify offers no idempotency or compare-and-swap. Another client can change an entry between the preflight read and the write. Stop uses `PUT` with `end` because the documented stop endpoint is user-scoped and could stop a replacement timer.
+- The extension does not retry writes, but the browser may retry an HTTP request after a connection reset. In a Chromium test, one failed `PUT` reached the fake server twice.
+- Removing a project from a running entry is not supported. Change it in Clockify instead.
+- Entries with custom fields or non-regular types are refused for editing and stopping, because the documented PUT semantics for them are not verified.
+- The unresolved-operation marker is persisted before dispatch, but there is no automatic crash recovery beyond showing it and requiring a manual re-check.
+- The old local history list and the undocumented favorites endpoint were removed. Legacy stored keys (`timerState`, `entries`, `currentLinearIssue`) are ignored, not deleted.
+- The Linear title comes from `document.title`; the layout of real Linear pages was not verified.
+- The key is stored as plaintext in extension storage. The widget uses an extension-origin iframe to keep its data separate from the Linear page. The page controls the iframe's position, so a compromised page could disguise the controls and trick you into clicking them.
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+## Development
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+npm install
+npm run build        # dist/chrome and dist/firefox (classic self-contained background scripts)
+npm run format:check
+npm run lint         # oxlint with the generic anti-slop plugin in tools/oxlint/anti-slop
+npm run typecheck
+npm test             # unit tests
+npm run test:e2e     # builds, then drives real Chromium with the unpacked extension
 ```
 
-**Edit a file directly in GitHub**
+Load `dist/chrome` as an unpacked Chrome extension, or `dist/firefox` via `about:debugging` (Gecko ID `clockify-for-linear@and-solution.de`).
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## End-to-end tests
 
-**Use GitHub Codespaces**
+`tests/e2e/chromium.test.ts` launches Chromium (path in `CHROME_BIN`, default the Playwright cache) with the built extension. All traffic goes through a local proxy that only reaches an in-process TLS fake serving `linear.app` and `api.clockify.me` with a synthetic key; other hosts are refused. Real Clockify is never contacted and no real credentials are used.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+**Firefox is not covered by automated tests.** The Firefox build exists and the manifest uses `background.scripts`, but it has not been loaded in a browser in this repository's test suite.
