@@ -1,6 +1,6 @@
 {
   "name": "clockify-for-linear",
-  "version": "2.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Track Linear issues with Clockify from a small browser extension.",
   "type": "module",
@@ -11,7 +11,10 @@
     "lint": "oxlint --deny-warnings",
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/unit/*.test.ts",
-    "test:e2e": "npm run build && node --test --test-concurrency=1 tests/e2e/*.test.ts",
+    "test:e2e:chromium": "E2E_BROWSER=chromium node --test --test-concurrency=1 tests/e2e/*.test.ts",
+    "test:e2e:firefox": "E2E_BROWSER=firefox node --test --test-concurrency=1 tests/e2e/*.test.ts",
+    "test:e2e": "npm run build && npm run test:e2e:chromium && npm run test:e2e:firefox",
+    "package": "npm run build && node scripts/package.ts",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run test:e2e"
   },
   "dependencies": {

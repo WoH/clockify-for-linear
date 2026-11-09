@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Package (fails if the tag differs from the package and manifest version)
+        run: node scripts/package.ts
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+      # create fails when the release already exists, so published assets are never overwritten.
+      - name: Create draft release with unsigned archives
+        run: >
+          gh release create "$GITHUB_REF_NAME" release/*.zip
+          --verify-tag --draft --title "$GITHUB_REF_NAME"
+          --notes "Chrome: unzip and load unpacked. Firefox: the zip is unsigned and cannot be installed in regular Firefox until it is signed as an unlisted add-on at addons.mozilla.org."
+        env:
+          GH_TOKEN: ${{ github.token }}

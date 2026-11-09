@@ -43,13 +43,39 @@ npm run format:check
 npm run lint         # oxlint with the generic anti-slop plugin in tools/oxlint/anti-slop
 npm run typecheck
 npm test             # unit tests
-npm run test:e2e     # builds, then drives real Chromium with the unpacked extension
+npm run test:e2e     # builds, then drives real Chromium and Firefox with the built extension
+npm run package      # release/*.zip for Chrome and Firefox
 ```
 
 Load `dist/chrome` as an unpacked Chrome extension, or `dist/firefox` via `about:debugging` (Gecko ID `clockify-for-linear@and-solution.de`).
 
 ## End-to-end tests
 
-`tests/e2e/chromium.test.ts` launches Chromium with the built extension. Set `CHROME_BIN` to a Chromium executable if the default Playwright cache path does not exist. All traffic goes through a local proxy that only reaches an in-process TLS fake serving `linear.app`, `api.clockify.me`, and `app.clockify.me` with a synthetic key; other hosts are refused. Real Clockify is never contacted and no real credentials are used.
+`tests/e2e/extension.test.ts` is one scenario file that runs against both real browsers with the built extension. `E2E_BROWSER=chromium|firefox` selects the browser, and `tests/e2e/browser.ts` holds the only browser-specific code.
 
-**Firefox is not covered by automated tests.** The Firefox build exists and the manifest uses `background.scripts`, but it has not been loaded in a browser in this repository's test suite.
+```sh
+npx playwright-core install --with-deps chromium firefox   # revisions pinned by the locked playwright-core
+npm run build
+npm run test:e2e:chromium
+npm run test:e2e:firefox
+```
+
+Playwright's managed browsers are used. Set `E2E_CHROMIUM_BIN` or `E2E_FIREFOX_BIN` only to override the executable. There is no skip path: if a browser is not installed the run fails.
+
+All traffic goes through a local proxy that only reaches an in-process TLS fake serving `linear.app`, `api.clockify.me`, and `app.clockify.me` with synthetic keys; other hosts are refused. Real Clockify is never contacted and no real credentials are used.
+
+**Firefox mechanics.** Playwright has no Firefox extension API, so `tests/e2e/marionette.ts` installs `dist/firefox` as a temporary add-on over Marionette (`Addon:Install`) in the Playwright-launched Firefox. This relies on Playwright's patched Firefox starting with `-marionette` and listening on the fixed port 2828; the `marionette.port` pref is ignored. The test fails with a clear error if that port is already taken, so run Firefox suites one at a time per machine (CI jobs are isolated). A Playwright upgrade could drop this flag, which would fail the Firefox run loudly. Juggler does not attach to top-level `moz-extension://` pages, so the Firefox popup is tested inside an iframe on a fake Linear page, from a copy of the build whose manifest also lists `popup.html` as web-accessible. The shipped Firefox manifest is unchanged.
+
+Firefox tests inspect extension storage through an extension page. The popup runs in a test-only iframe, so the suite does not verify opening it from the browser toolbar.
+
+## Releases
+
+Pushing a tag `vX.Y.Z` runs the full check suite (both browsers) and then creates a **draft** GitHub release with `clockify-for-linear-X.Y.Z-chrome.zip` and `clockify-for-linear-X.Y.Z-firefox.zip`. The workflow fails if the tag is not `v` plus the `package.json` version (which `scripts/build.ts` writes into both manifests) or if the release already exists, so published assets are never overwritten. Nothing is sent to a browser store.
+
+1. Bump `version` in `package.json` and `package-lock.json`, merge, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
+2. Review and publish the draft release.
+
+Locally, `npm run package` writes the archives to `release/`. Each archive has `manifest.json` at its root, and the script checks this.
+
+- **Chrome:** unzip the archive and load the folder with **Load unpacked** in `chrome://extensions` (Developer mode). A `.zip` cannot be installed directly outside the Chrome Web Store.
+- **Firefox:** the archive is **unsigned**. Regular Firefox (release and beta) refuses unsigned add-ons; the build only loads as a temporary add-on via `about:debugging`, or in Developer Edition/Nightly/ESR with `xpinstall.signatures.required` set to false. To distribute to normal Firefox users from GitHub, sign the archive as an **unlisted** add-on with Mozilla (`web-ext sign --channel=unlisted`, which needs AMO API credentials) and attach the signed `.xpi`. This repository does not hold those credentials and does not sign.

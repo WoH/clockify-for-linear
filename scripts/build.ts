@@ -1,6 +1,8 @@
 import { cp, mkdir, rm, writeFile } from "node:fs/promises";
 import { build } from "esbuild";
 
+import pkg from "../package.json" with { type: "json" };
+
 const BROWSERS = ["chrome", "firefox"] as const;
 const GECKO_ID = "clockify-for-linear@and-solution.de";
 const OUT = new URL("../dist/", import.meta.url);
@@ -12,7 +14,7 @@ function manifest(browser: (typeof BROWSERS)[number]) {
     manifest_version: 3,
     name: "Clockify Tracker for Linear",
     description: "Track the Linear issue you are viewing with Clockify.",
-    version: "2.0.0",
+    version: pkg.version,
     icons,
     action: { default_popup: "popup.html", default_icon: icons },
     permissions: ["storage"],
