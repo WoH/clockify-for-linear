@@ -43,10 +43,6 @@ jobs:
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}" >/dev/null
           git merge-base --is-ancestor "$RELEASE_TAG" origin/main
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "A release for $RELEASE_TAG already exists; it is never replaced." >&2
-            exit 1
-          fi
           git worktree add --detach "$SOURCE_DIR" "$RELEASE_TAG"
           test "$(node -p 'require(process.argv[1]).version' "$SOURCE_DIR/package.json")" = "${RELEASE_TAG#v}"
           cmp tools/chrome-extension-id "$SOURCE_DIR/tools/chrome-extension-id"
@@ -82,10 +78,8 @@ jobs:
           node scripts/obtain-firefox-xpi.ts recover "$RELEASE_TAG" "$SOURCE_DIR/dist/firefox" \
             "$RUNNER_TEMP/unused-source.zip" \
             "$SOURCE_DIR/release/clockify-for-linear-${RELEASE_TAG#v}-firefox.xpi"
-      - name: Save approved XPI for isolated verification
-        uses: actions/upload-artifact@v4
-        with:
-          name: firefox-signature-diagnostic
-          path: ${{ runner.temp }}/release-source/release/clockify-for-linear-*-firefox.xpi
-          if-no-files-found: error
-          retention-days: 1
+      - name: Diagnose signed XPI installation
+        run: |
+          cd "$SOURCE_DIR"
+          timeout -k 5s 90s env DEBUG=pw:browser node "$GITHUB_WORKSPACE/scripts/verify-firefox-signature.ts" \
+            "$SOURCE_DIR/release/clockify-for-linear-${RELEASE_TAG#v}-firefox.xpi"

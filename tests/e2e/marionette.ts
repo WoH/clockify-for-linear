@@ -50,9 +50,11 @@ async function session(commands: [string, object][]): Promise<unknown[]> {
 
     for (const [index, [name, params]] of commands.entries()) {
       const json = JSON.stringify([0, index + 1, name, params]);
+      console.error(`Marionette starting ${name}`);
       const reply = next();
       socket.write(`${Buffer.byteLength(json)}:${json}`);
       const parsed = replySchema.parse(JSON.parse(await reply));
+      console.error(`Marionette finished ${name}`);
 
       if (parsed[2] !== null) throw new Error(`${name} failed: ${JSON.stringify(parsed[2])}`);
       replies.push(parsed[3]);
