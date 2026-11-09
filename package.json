@@ -1,6 +1,6 @@
 {
   "name": "clockify-for-linear",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "description": "Track Linear issues with Clockify from a small browser extension.",
   "type": "module",

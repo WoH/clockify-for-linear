@@ -1,0 +1,103 @@
+name: Sign Firefox add-on
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag of an existing draft release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firefox-signing-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  sign:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Check the draft and tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}" >/dev/null
+          git merge-base --is-ancestor "$RELEASE_TAG" origin/main
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          asset="clockify-for-linear-${RELEASE_TAG#v}-firefox.xpi"
+          marker="firefox-signing-${RELEASE_TAG}.txt"
+          if gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | grep -Fx -e "$asset" -e "$marker"; then
+            echo "A signed asset or submission marker already exists; check the release and Mozilla dashboard." >&2
+            exit 1
+          fi
+          git checkout --detach "$RELEASE_TAG"
+          test "$(node -p 'require("./package.json").version')" = "${RELEASE_TAG#v}"
+      - run: npm ci
+      - run: npm ci --prefix tools/firefox-signing
+      - run: npm run build
+      - name: Check Firefox declaration and prepare source
+        run: |
+          set -euo pipefail
+          node -e 'const g = require("./dist/firefox/manifest.json").browser_specific_settings.gecko; if (!g.data_collection_permissions?.required?.length) process.exit(1)'
+          cp -a dist/firefox "$RUNNER_TEMP/firefox-submission"
+          git archive --format=zip HEAD > "$RUNNER_TEMP/firefox-source.zip"
+      - name: Check signing credentials exist
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: test -n "$WEB_EXT_API_KEY" && test -n "$WEB_EXT_API_SECRET"
+      - name: Record signing attempt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          marker="$RUNNER_TEMP/firefox-signing-${RELEASE_TAG}.txt"
+          printf '%s\n' "A Mozilla signing submission may exist for $RELEASE_TAG. Check the AMO dashboard before retrying." > "$marker"
+          gh release upload "$RELEASE_TAG" "$marker"
+      - name: Submit for unlisted signing
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$WEB_EXT_API_KEY" && test -n "$WEB_EXT_API_SECRET"
+          tools/firefox-signing/node_modules/.bin/web-ext sign \
+            --no-config-discovery \
+            --source-dir "$RUNNER_TEMP/firefox-submission" \
+            --artifacts-dir "$RUNNER_TEMP/firefox-signed" \
+            --channel unlisted \
+            --upload-source-code "$RUNNER_TEMP/firefox-source.zip" \
+            --approval-timeout 1800000
+      - name: Attach signed add-on to draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=("$RUNNER_TEMP"/firefox-signed/*.xpi)
+          test "${#files[@]}" -eq 1
+          unzip -t "${files[0]}" >/dev/null
+          node scripts/verify-firefox-xpi.ts "${files[0]}" dist/firefox
+          asset="$RUNNER_TEMP/clockify-for-linear-${RELEASE_TAG#v}-firefox.xpi"
+          cp "${files[0]}" "$asset"
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = true
+          gh release upload "$RELEASE_TAG" "$asset"

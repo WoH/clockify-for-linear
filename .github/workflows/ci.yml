@@ -25,6 +25,21 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - name: Check Chrome CRX packaging
+        run: |
+          set -euo pipefail
+          work=$(mktemp -d "$RUNNER_TEMP/crx-test.XXXXXX")
+          trap 'rm -rf -- "$work"' EXIT
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out "$work/key.pem" 2>/dev/null
+          id=$(openssl pkey -in "$work/key.pem" -pubout -outform DER 2>/dev/null | sha256sum | cut -c1-32 | tr '0123456789abcdef' 'abcdefghijklmnop')
+          scripts/package-crx.sh dist/chrome "$work/key.pem" "$id" "$work/extension.crx"
+          wrong=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          if [[ "$id" = "$wrong" ]]; then wrong=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb; fi
+          if scripts/package-crx.sh dist/chrome "$work/key.pem" "$wrong" "$work/wrong.crx"; then
+            echo "A mismatched signing key was accepted." >&2
+            exit 1
+          fi
+          test ! -e "$work/wrong.crx"
       # Installs the exact Chromium and Firefox revisions that the locked playwright-core expects.
       - run: npx playwright-core install --with-deps chromium firefox
       - name: Chromium end-to-end
