@@ -1,10 +1,10 @@
 # Clockify for Linear
 
-A Chrome and Firefox extension that shows your Clockify timer on Linear issue pages and in the toolbar popup. Clockify is the source of truth for the running timer.
+A Chrome and Firefox extension that shows your Clockify timer on Linear issue pages and in the toolbar popup. Clockify is the source of truth for the running timer. The Firefox build requires Firefox 140 or newer on desktop and 142 or newer on Android.
 
 ## Install
 
-1. Install Node.js 24 and run `npm ci`.
+1. Install Node.js 24, Python 3, OpenSSL, `zip`, and `unzip`, then run `npm ci`.
 2. Run `npm run build`.
 3. In Chrome, open `chrome://extensions`, enable **Developer mode**, and select **Load unpacked**. Choose `dist/chrome`.
 4. In Firefox, open `about:debugging`, select **This Firefox**, and load `dist/firefox/manifest.json` as a temporary add-on. Firefox removes temporary add-ons when it exits.
@@ -33,6 +33,7 @@ The extension requests access to Linear and Clockify. A new unpacked installatio
 - The old local history list was removed. Legacy stored keys (`timerState`, `entries`, `currentLinearIssue`) are ignored, not deleted.
 - The Linear title comes from `document.title`; the layout of real Linear pages was not verified.
 - The key is stored as plaintext in extension storage. The widget uses an extension-origin iframe to keep its data separate from the Linear page. The page controls the iframe's position, so a compromised page could disguise the controls and trick you into clicking them.
+- The extension sends your Clockify API key, account and project identifiers, and timer descriptions to Clockify. A timer description can contain a Linear issue identifier or text you enter. The extension reads the current Linear issue and its title to suggest a description and project.
 
 ## Development
 
@@ -70,12 +71,28 @@ Firefox tests inspect extension storage through an extension page. The popup run
 
 ## Releases
 
-Pushing a tag `vX.Y.Z` runs the full check suite (both browsers) and then creates a **draft** GitHub release with `clockify-for-linear-X.Y.Z-chrome.zip` and `clockify-for-linear-X.Y.Z-firefox.zip`. The workflow fails if the tag is not `v` plus the `package.json` version (which `scripts/build.ts` writes into both manifests) or if the release already exists, so published assets are never overwritten. Nothing is sent to a browser store.
+Pushing a tag `vX.Y.Z` runs the full check suite in both browsers, builds both zips, signs the Chrome CRX, gets the signed Firefox XPI from Mozilla, and only then creates a **published** GitHub release with all four assets. There is no draft release. Pull request checks never sign or publish, and CI uses throwaway keys only.
 
 1. Bump `version` in `package.json` and `package-lock.json`, merge, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
-2. Review and publish the draft release.
+2. If the run fails with "awaiting review", wait for Mozilla's approval email and then follow Recovery.
 
-Locally, `npm run package` writes the archives to `release/`. Each archive has `manifest.json` at its root, and the script checks this.
+The workflow fails before building if the tag is not `v` plus the `package.json` version, if the tag is not the checked-out commit on `main`, or if a release for the tag already exists, so published assets are never overwritten. Locally, `npm run package` writes the zips to `release/`. Each has `manifest.json` at its root, and the script checks this.
 
-- **Chrome:** unzip the archive and load the folder with **Load unpacked** in `chrome://extensions` (Developer mode). A `.zip` cannot be installed directly outside the Chrome Web Store.
-- **Firefox:** the archive is **unsigned**. Regular Firefox (release and beta) refuses unsigned add-ons; the build only loads as a temporary add-on via `about:debugging`, or in Developer Edition/Nightly/ESR with `xpinstall.signatures.required` set to false. To distribute to normal Firefox users from GitHub, sign the archive as an **unlisted** add-on with Mozilla (`web-ext sign --channel=unlisted`, which needs AMO API credentials) and attach the signed `.xpi`. This repository does not hold those credentials and does not sign.
+**Firefox signing and AMO state.** Mozilla is the authority on whether a version was submitted. Before anything else the workflow asks the authenticated Mozilla v5 API (`scripts/amo.ts`) about the version:
+
+- **Absent:** the tag run submits the build with `web-ext sign --channel=unlisted` and the tagged source archive. The tagged source of this private repository goes to Mozilla reviewers. It waits up to 20 minutes.
+- **Pending:** nothing is submitted or released. The run fails. Mozilla may defer signing for manual review.
+- **Approved:** the signed XPI is fetched from Mozilla, never resubmitted.
+- **Anything else** (duplicate versions, listed channel, disabled file, malformed or unreachable API): the run fails closed.
+
+Every XPI, whether returned by `web-ext` or downloaded, is checked by `scripts/verify-firefox-xpi.ts`. It rejects duplicate paths, extra or missing files, and any file that differs from `dist/firefox` (the `META-INF` signature files are excluded). Downloads also must match the SHA-256 that Mozilla reports. Before publishing, Firefox must reject an unsigned control and accept the signed XPI with signature enforcement enabled. The API client sends the JWT only to the Mozilla API origin, never follows redirects automatically, refuses redirects outside Mozilla's origin and CDN, and retries only transient failures of read-only requests. Submission is never retried by the workflow, and runs for one tag are serialized by a concurrency group. The tagged workflow uses the `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` secrets in the XPI step only. The add-on is not listed on AMO.
+
+**Recovery after a pending review.** When Mozilla approves the version, open **Actions > Release > Run workflow** and select the same tag `vX.Y.Z` as the ref (not a branch). By default, this run rebuilds the tag, signs the CRX, and downloads and verifies the approved XPI without submitting it again. If the version is still pending or absent, nothing is released. A GitHub rerun also uses this recovery mode.
+
+If a run failed before submitting and the AMO developer dashboard confirms that Mozilla has no submission for the version, select **Allow submission only after checking Mozilla has no version** when starting the workflow. Do not select it when the earlier submission's outcome is unknown. Never re-tag the same version: a fix needs a new version.
+
+**Publishing is automatic.** `gh release create` stages assets in a temporary draft and publishes the release after uploading them. The workflow checks that the published release has four assets. An interrupted run may leave a draft that needs attention. Check the release and Mozilla dashboard before retrying; keep the tag and use the recovery workflow to download an already approved XPI rather than resubmit it.
+
+**Chrome and keys.** The release includes a signed `.crx` for self-hosted Linux distribution and a zip that you can load with **Load unpacked** in `chrome://extensions`. Chrome restricts off-store installation on other platforms. The CRX uses the `CHROME_CRX_PRIVATE_KEY` secret and the public ID in `tools/chrome-extension-id`, and signing fails if the key does not match that ID. Keep a separate secure backup of the private key: GitHub cannot show it again, and a new key changes the extension ID. A separately loaded unpacked extension may have a different ID and separate storage. The Firefox zip is unsigned, and regular Firefox installs only the signed XPI.
+
+Mozilla reviewers can reproduce the Firefox build on Ubuntu 24.04 x86-64 with Node.js 24. Run `npm ci` followed by `npm run build`; the result is in `dist/firefox`. The extension does not currently provide an automatic Firefox update URL.

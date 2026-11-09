@@ -31,7 +31,21 @@ function manifest(browser: (typeof BROWSERS)[number]) {
   return {
     ...common,
     background: { scripts: ["background.js"] },
-    browser_specific_settings: { gecko: { id: GECKO_ID, strict_min_version: "121.0" } },
+    browser_specific_settings: {
+      gecko: {
+        id: GECKO_ID,
+        strict_min_version: "140.0",
+        data_collection_permissions: {
+          required: [
+            "authenticationInfo",
+            "personallyIdentifyingInfo",
+            "browsingActivity",
+            "websiteContent",
+          ],
+        },
+      },
+      gecko_android: { strict_min_version: "142.0" },
+    },
   };
 }
 
