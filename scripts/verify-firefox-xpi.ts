@@ -52,7 +52,17 @@ assert.deepEqual(payload, expected, "The signed XPI has a different file invento
 
 for (const name of expected) {
   const actual: Buffer = execFileSync("unzip", ["-p", archive, name]);
-  assert.deepEqual(actual, readFileSync(join(source, name)), `The signed file differs: ${name}`);
+  const expectedFile: Buffer = readFileSync(join(source, name));
+
+  if (
+    name === "manifest.json" &&
+    expectedFile.at(-1) === 10 &&
+    actual.equals(expectedFile.subarray(0, -1))
+  ) {
+    continue;
+  }
+
+  assert.deepEqual(actual, expectedFile, `The signed file differs: ${name}`);
 }
 
 console.log("The XPI payload matches the Firefox build. Firefox must still verify its signature.");

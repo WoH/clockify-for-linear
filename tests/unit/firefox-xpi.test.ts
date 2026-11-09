@@ -16,7 +16,7 @@ test("signed XPI verification rejects changed or extra payload files", () => {
     mkdirSync(source);
     mkdirSync(submission);
     mkdirSync(join(signed, "META-INF"), { recursive: true });
-    writeFileSync(join(source, "manifest.json"), '{"version":"1.0"}');
+    writeFileSync(join(source, "manifest.json"), '{"version":"1.0"}\n');
     writeFileSync(join(source, "widget.js"), "original");
     writeFileSync(join(signed, "manifest.json"), '{"version":"1.0"}');
     writeFileSync(join(signed, "widget.js"), "original");
@@ -30,6 +30,9 @@ test("signed XPI verification rejects changed or extra payload files", () => {
       });
 
     verify();
+    writeFileSync(join(source, "manifest.json"), '{"version":"1.1"}\n');
+    assert.throws(verify);
+    writeFileSync(join(source, "manifest.json"), '{"version":"1.0"}\n');
     copyFileSync(join(source, "manifest.json"), join(submission, "manifest.json"));
     copyFileSync(join(source, "widget.js"), join(submission, "widget.js"));
     writeFileSync(join(submission, ".amo-upload-uuid"), "upload state");
