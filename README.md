@@ -1,16 +1,37 @@
 # Clockify for Linear
 
+<p align="center">
+  <img src="public/icons/icon128.png" alt="Clockify for Linear logo" width="128" height="128">
+</p>
+
 A Chrome and Firefox extension that shows your Clockify timer on Linear issue pages and in the toolbar popup. Clockify is the source of truth for the running timer. The Firefox build requires Firefox 140 or newer on desktop and 142 or newer on Android.
 
-## Install
+## Getting started
 
-1. Install Node.js 24, Python 3, OpenSSL, `zip`, and `unzip`, then run `npm ci`.
-2. Run `npm run build`.
-3. In Chrome, open `chrome://extensions`, enable **Developer mode**, and select **Load unpacked**. Choose `dist/chrome`.
-4. In Firefox, open `about:debugging`, select **This Firefox**, and load `dist/firefox/manifest.json` as a temporary add-on. Firefox removes temporary add-ons when it exits.
-5. Open the extension's toolbar popup and enter your Clockify API key. You can find the key in [Clockify settings](https://clockify.me/user/settings).
+Download the files from the [latest release](https://github.com/WoH/clockify-for-linear/releases/latest).
 
-The extension requests access to Linear and Clockify. A new unpacked installation has its own storage and may require you to enter the key again. Reload the extension after rebuilding it.
+### Chrome
+
+1. Download `clockify-for-linear-<version>-chrome.zip` and unzip it into a folder you will keep.
+2. Open `chrome://extensions` and enable **Developer mode**.
+3. Select **Load unpacked** and choose the unzipped folder.
+
+Chrome allows the signed `.crx` only on Linux, and only for self-hosted installs. On other systems, use the zip.
+
+### Firefox
+
+1. Download `clockify-for-linear-<version>-firefox.xpi`. Mozilla signed it, so regular Firefox accepts it.
+2. Open `about:addons`, select the gear icon, choose **Install Add-on From File**, and pick the `.xpi`. You can also drag the file into the Firefox window.
+
+Do not use the Firefox zip: it is unsigned.
+
+### Set your API key
+
+Open the extension's toolbar popup and enter your Clockify API key. You can find the key in [Clockify settings](https://clockify.me/user/settings). Then open a Linear issue.
+
+The extension requests access to Linear and Clockify. The extension has no automatic updates: to upgrade, install the new release. An unpacked Chrome install has its own storage and may ask for the key again.
+
+To build from source, see [Development](#development).
 
 ## Behavior
 
