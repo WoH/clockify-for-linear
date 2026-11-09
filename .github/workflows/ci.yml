@@ -29,5 +29,7 @@ jobs:
       - run: npx playwright-core install --with-deps chromium firefox
       - name: Chromium end-to-end
         run: npm run test:e2e:chromium
+        env:
+          DEBUG: pw:browser
       - name: Firefox end-to-end
         run: npm run test:e2e:firefox
