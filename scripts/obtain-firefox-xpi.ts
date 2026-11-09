@@ -5,7 +5,6 @@ import { join, resolve } from "node:path";
 
 import { z } from "zod";
 
-import pkg from "../package.json" with { type: "json" };
 import { createAmoClient } from "./amo.ts";
 import { obtainSignedXpi } from "./firefox-signed-xpi.ts";
 
@@ -23,8 +22,6 @@ if (
   );
 }
 
-if (tag !== `v${pkg.version}`) throw new Error(`Tag ${tag} does not match ${pkg.version}.`);
-
 const manifest = z
   .object({
     version: z.string(),
@@ -32,7 +29,7 @@ const manifest = z
   })
   .parse(JSON.parse(readFileSync(join(buildDirectory, "manifest.json"), "utf8")));
 
-if (manifest.version !== pkg.version) throw new Error("The Firefox build has another version.");
+if (tag !== `v${manifest.version}`) throw new Error(`Tag ${tag} does not match the Firefox build.`);
 
 const issuer = process.env["WEB_EXT_API_KEY"];
 const secret = process.env["WEB_EXT_API_SECRET"];
@@ -45,7 +42,7 @@ const work = mkdtempSync(join(tmpdir(), "firefox-xpi-"));
 await obtainSignedXpi({
   client: createAmoClient({ issuer, secret }),
   guid: manifest.browser_specific_settings.gecko.id,
-  version: pkg.version,
+  version: manifest.version,
   mode,
   buildDirectory,
   artifactsDirectory: join(work, "artifacts"),

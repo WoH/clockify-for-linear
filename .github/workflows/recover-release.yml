@@ -1,0 +1,106 @@
+name: Recover signed release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag with a Mozilla-approved Firefox add-on
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag }}
+      SOURCE_DIR: ${{ runner.temp }}/release-source
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Check the tag and release state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git rev-parse --verify "refs/tags/$RELEASE_TAG^{commit}" >/dev/null
+          git merge-base --is-ancestor "$RELEASE_TAG" origin/main
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "A release for $RELEASE_TAG already exists; it is never replaced." >&2
+            exit 1
+          fi
+          git worktree add --detach "$SOURCE_DIR" "$RELEASE_TAG"
+          test "$(node -p 'require(process.argv[1]).version' "$SOURCE_DIR/package.json")" = "${RELEASE_TAG#v}"
+          cmp tools/chrome-extension-id "$SOURCE_DIR/tools/chrome-extension-id"
+      - run: npm ci
+      - name: Install tagged dependencies and browsers
+        run: |
+          npm ci --prefix "$SOURCE_DIR"
+          (cd "$SOURCE_DIR" && npx playwright-core install --with-deps chromium firefox)
+          npx playwright-core install --with-deps firefox
+      - name: Check and package the tagged source
+        run: |
+          cd "$SOURCE_DIR"
+          npm run check
+          node scripts/package.ts
+      - name: Sign Chrome CRX
+        env:
+          CHROME_CRX_PRIVATE_KEY: ${{ secrets.CHROME_CRX_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$CHROME_CRX_PRIVATE_KEY"
+          umask 077
+          key=$(mktemp "$RUNNER_TEMP/chrome-signing.XXXXXX")
+          trap 'rm -f -- "$key"' EXIT
+          printf '%s\n' "$CHROME_CRX_PRIVATE_KEY" > "$key"
+          scripts/package-crx.sh "$SOURCE_DIR/dist/chrome" "$key" "$(< tools/chrome-extension-id)" \
+            "$SOURCE_DIR/release/clockify-for-linear-${RELEASE_TAG#v}-chrome.crx"
+      - name: Download the approved Firefox XPI
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          set -euo pipefail
+          node scripts/obtain-firefox-xpi.ts recover "$RELEASE_TAG" "$SOURCE_DIR/dist/firefox" \
+            "$RUNNER_TEMP/unused-source.zip" \
+            "$SOURCE_DIR/release/clockify-for-linear-${RELEASE_TAG#v}-firefox.xpi"
+      - name: Verify Firefox signature
+        run: |
+          cd "$SOURCE_DIR"
+          node "$GITHUB_WORKSPACE/scripts/verify-firefox-signature.ts" \
+            "$SOURCE_DIR/release/clockify-for-linear-${RELEASE_TAG#v}-firefox.xpi"
+      - name: Check and publish the four assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=${RELEASE_TAG#v}
+          expected=$(printf '%s\n' \
+            "clockify-for-linear-$version-chrome.crx" \
+            "clockify-for-linear-$version-chrome.zip" \
+            "clockify-for-linear-$version-firefox.xpi" \
+            "clockify-for-linear-$version-firefox.zip")
+          test "$(ls "$SOURCE_DIR/release")" = "$expected"
+          gh release create "$RELEASE_TAG" "$SOURCE_DIR"/release/clockify-for-linear-"$version"-* \
+            --verify-tag --title "$RELEASE_TAG" \
+            --notes "Chrome: the signed CRX is for self-hosted Linux distribution; the zip can be loaded unpacked. Firefox: the XPI is signed by Mozilla as an unlisted add-on; the zip is unsigned."
+          count=$(gh release view "$RELEASE_TAG" --json assets,isDraft \
+            --jq 'select(.isDraft == false) | .assets | length')
+          test "$count" = 4
