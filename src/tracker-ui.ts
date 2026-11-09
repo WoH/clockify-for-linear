@@ -1,5 +1,11 @@
 import { element, svg } from "./dom.ts";
-import { changedMessageSchema, formatElapsed, issueKey, projectForTitle } from "./model.ts";
+import {
+  changedMessageSchema,
+  formatElapsed,
+  issueKey,
+  projectForTitle,
+  STORAGE_KEY_API_KEY,
+} from "./model.ts";
 import { send } from "./messaging.ts";
 import { ProjectPicker } from "./project-picker.ts";
 import { TRACKER_CSS } from "./tracker-css.ts";
@@ -117,6 +123,10 @@ export class Tracker {
       if (changedMessageSchema.safeParse(message).success) this.refresh();
 
       return false;
+    });
+
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === "local" && STORAGE_KEY_API_KEY in changes) this.refresh();
     });
 
     document.addEventListener("visibilitychange", () => this.refresh());

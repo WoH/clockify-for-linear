@@ -134,7 +134,9 @@ export class ProjectPicker {
     });
 
     // Pressing a row must not blur the field, or the list would close before the click lands.
+    // Firefox still moves focus on mousedown after a cancelled pointerdown, so both are cancelled.
     this.panel.addEventListener("pointerdown", (event) => event.preventDefault());
+    this.panel.addEventListener("mousedown", (event) => event.preventDefault());
     this.list.addEventListener("click", (event) => {
       const row = this.rowAt(event.target);
 

@@ -3,43 +3,24 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, beforeEach, test } from "node:test";
-import { chromium } from "playwright-core";
 
+import { launchBrowser } from "./browser.ts";
 import { FakeWorld, SECOND_KEY, SYNTHETIC_KEY } from "./fake-world.ts";
 
-import type { BrowserContext, FrameLocator, Page, Worker } from "playwright-core";
-
-const EXTENSION_DIR = join(import.meta.dirname, "../../dist/chrome");
-
-const CHROME =
-  process.env["CHROME_BIN"] ?? "/home/woh/.cache/ms-playwright/chromium-1243/chrome-linux64/chrome";
+import type { LaunchedBrowser, Popup } from "./browser.ts";
+import type { BrowserContext, FrameLocator, Page } from "playwright-core";
 
 const ISSUE_URL = "https://linear.app/acme/issue/ENG-1/first";
 
 const world = new FakeWorld();
 const profile = mkdtempSync(join(tmpdir(), "clockify-for-linear-profile-"));
 let context: BrowserContext;
-let extensionId = "";
+let origin = "";
+let runInExtension: LaunchedBrowser["runInExtension"];
+let openPopup: LaunchedBrowser["openPopup"];
 
 async function launch(): Promise<void> {
-  context = await chromium.launchPersistentContext(profile, {
-    executablePath: CHROME,
-    headless: false,
-    args: [
-      "--headless=new",
-      `--disable-extensions-except=${EXTENSION_DIR}`,
-      `--load-extension=${EXTENSION_DIR}`,
-      `--proxy-server=http://${world.proxyUrl}`,
-      "--ignore-certificate-errors",
-    ],
-  });
-
-  context.setDefaultTimeout(5_000);
-
-  const worker: Worker =
-    context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
-
-  extensionId = new URL(worker.url()).host;
+  ({ context, origin, runInExtension, openPopup } = await launchBrowser(profile, world.proxyUrl));
 }
 
 function widget(page: Page): FrameLocator {
@@ -47,29 +28,28 @@ function widget(page: Page): FrameLocator {
 }
 
 /** Picks a project the way a user does: click the field, type, click the row. An empty query picks "No project". */
-async function chooseProject(view: Page | FrameLocator, query: string, row: string): Promise<void> {
+async function chooseProject(
+  view: Pick<Page, "getByTestId" | "getByRole">,
+  query: string,
+  row: string,
+): Promise<void> {
   await view.getByTestId("project").click();
   await view.getByTestId("project").fill(query);
   await view.getByRole("option", { name: row }).click();
 }
 
-async function popup(): Promise<Page> {
-  const page = await context.newPage();
-  await page.goto(`chrome-extension://${extensionId}/popup.html`);
-
-  return page;
+async function popup(): Promise<Popup> {
+  return openPopup();
 }
 
-async function connect(page: Page): Promise<void> {
+async function connect(page: Popup): Promise<void> {
   await page.getByTestId("api-key").fill(SYNTHETIC_KEY);
   await page.getByTestId("connect").click();
   await page.getByTestId("start").waitFor();
 }
 
 async function storedKey(): Promise<string | undefined> {
-  const worker = context.serviceWorkers()[0];
-  assert.ok(worker);
-  const stored = await worker.evaluate(() => chrome.storage.local.get("clockifyApiKey"));
+  const stored = await runInExtension(() => chrome.storage.local.get("clockifyApiKey"));
 
   const key = stored["clockifyApiKey"];
 
@@ -82,8 +62,6 @@ before(async () => {
 });
 
 async function connectedAs(key: string): Promise<void> {
-  const worker = context.serviceWorkers()[0];
-  assert.ok(worker);
   const page = await popup();
   const disconnect = page.getByTestId("disconnect");
 
@@ -101,9 +79,7 @@ beforeEach(async () => {
 
   world.entries = [];
   world.clearFaults();
-  await context
-    .serviceWorkers()[0]
-    ?.evaluate(() => chrome.storage.local.remove("unresolvedOperations"));
+  await runInExtension(() => chrome.storage.local.remove("unresolvedOperations"));
 });
 
 after(async () => {
@@ -113,7 +89,7 @@ after(async () => {
 });
 
 test("an invalid key is rejected and not stored", async () => {
-  await context.serviceWorkers()[0]?.evaluate(() => chrome.storage.local.clear());
+  await runInExtension(() => chrome.storage.local.clear());
   const page = await popup();
   await page.getByTestId("api-key").fill("not-the-synthetic-key");
   await page.getByTestId("connect").click();
@@ -124,7 +100,7 @@ test("an invalid key is rejected and not stored", async () => {
 });
 
 test("connecting stores the key under clockifyApiKey and keeps it away from pages", async () => {
-  await context.serviceWorkers()[0]?.evaluate(() => chrome.storage.local.clear());
+  await runInExtension(() => chrome.storage.local.clear());
   const page = await popup();
   await connect(page);
   assert.equal(await storedKey(), SYNTHETIC_KEY);
@@ -296,12 +272,8 @@ async function waitUntil(condition: () => boolean | Promise<boolean>): Promise<v
   throw new Error("condition not reached in time");
 }
 
-async function clockedPopup(): Promise<Page> {
-  const page = await context.newPage();
-  await page.clock.install();
-  await page.goto(`chrome-extension://${extensionId}/popup.html`);
-
-  return page;
+async function clockedPopup(): Promise<Popup> {
+  return openPopup({ clock: true });
 }
 
 test("a refreshed view keeps its baseline: untouched fields merge, stale edits conflict", async () => {
@@ -400,7 +372,7 @@ test("the widget frame is the only page-facing extension surface and the key nev
   await widget(page).getByTestId("start").waitFor();
   const html = await page.evaluate(() => document.documentElement.outerHTML);
   assert.equal(html.includes(SYNTHETIC_KEY), false);
-  const frames = page.frames().filter((frame) => frame.url().startsWith("chrome-extension://"));
+  const frames = page.frames().filter((frame) => frame.url().startsWith(origin));
   assert.equal(frames.length, 1);
   assert.equal(new URL(frames[0]?.url() ?? "").pathname, "/widget.html");
 
@@ -413,7 +385,7 @@ test("the widget frame is the only page-facing extension surface and the key nev
   await page.close();
 });
 
-async function switchAccount(managing: Page, key: string): Promise<void> {
+async function switchAccount(managing: Popup, key: string): Promise<void> {
   await managing.getByTestId("disconnect").click();
   await managing.getByTestId("api-key").fill(key);
   await managing.getByTestId("connect").click();
@@ -730,7 +702,7 @@ async function withProjects(
   }
 }
 
-async function optionNames(view: Page | FrameLocator): Promise<string[]> {
+async function optionNames(view: Pick<Page, "getByRole">): Promise<string[]> {
   return view
     .getByRole("option")
     .evaluateAll((nodes) =>
