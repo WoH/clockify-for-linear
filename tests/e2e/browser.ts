@@ -43,7 +43,7 @@ export type Popup = Pick<
   | "waitForTimeout"
 > & { evaluate: <T>(fn: () => Promise<T> | T) => Promise<T> };
 
-/** Uses the Playwright-managed browser unless CHROME_BIN / FIREFOX_BIN points at another executable. */
+/** Uses Playwright's browsers unless an explicit end-to-end test override is set. */
 export async function launchBrowser(profile: string, proxy: string): Promise<LaunchedBrowser> {
   return BROWSER === "chromium" ? launchChromium(profile, proxy) : launchFirefox(profile, proxy);
 }
@@ -52,7 +52,7 @@ async function launchChromium(profile: string, proxy: string): Promise<LaunchedB
   const extension = join(import.meta.dirname, "../../dist/chrome");
 
   const context = await chromium.launchPersistentContext(profile, {
-    executablePath: process.env["CHROME_BIN"],
+    executablePath: process.env["E2E_CHROMIUM_BIN"],
     headless: false,
     args: [
       "--headless=new",
@@ -127,7 +127,7 @@ async function launchFirefox(profile: string, proxy: string): Promise<LaunchedBr
   await assertMarionettePortFree();
 
   const context = await firefox.launchPersistentContext(profile, {
-    executablePath: process.env["FIREFOX_BIN"],
+    executablePath: process.env["E2E_FIREFOX_BIN"],
     headless: true,
     proxy: { server: `http://${proxy}` },
     ignoreHTTPSErrors: true,

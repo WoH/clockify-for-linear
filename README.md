@@ -60,7 +60,7 @@ npm run test:e2e:chromium
 npm run test:e2e:firefox
 ```
 
-Playwright's managed browsers are used. Set `CHROME_BIN` or `FIREFOX_BIN` only to override the executable. There is no skip path: if a browser is not installed the run fails.
+Playwright's managed browsers are used. Set `E2E_CHROMIUM_BIN` or `E2E_FIREFOX_BIN` only to override the executable. There is no skip path: if a browser is not installed the run fails.
 
 All traffic goes through a local proxy that only reaches an in-process TLS fake serving `linear.app`, `api.clockify.me`, and `app.clockify.me` with synthetic keys; other hosts are refused. Real Clockify is never contacted and no real credentials are used.
 
