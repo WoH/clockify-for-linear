@@ -64,7 +64,16 @@ async function launchChromium(profile: string, proxy: string): Promise<LaunchedB
   });
 
   context.setDefaultTimeout(5_000);
-  const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
+  let worker = context.serviceWorkers()[0];
+
+  if (worker === undefined) {
+    try {
+      worker = await context.waitForEvent("serviceworker", { timeout: 15_000 });
+    } catch (error) {
+      await context.close();
+      throw error;
+    }
+  }
 
   const origin = `chrome-extension://${new URL(worker.url()).host}`;
 
@@ -131,7 +140,14 @@ async function launchFirefox(profile: string, proxy: string): Promise<LaunchedBr
   });
 
   context.setDefaultTimeout(5_000);
-  assert.equal(await installTemporaryAddon(extension), GECKO_ID);
+
+  try {
+    assert.equal(await installTemporaryAddon(extension), GECKO_ID);
+  } catch (error) {
+    await context.close();
+    throw error;
+  }
+
   const origin = `moz-extension://${FIREFOX_UUID}`;
 
   const openPopup: LaunchedBrowser["openPopup"] = async ({ clock = false } = {}) => {

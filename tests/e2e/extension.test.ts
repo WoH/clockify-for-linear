@@ -83,9 +83,12 @@ beforeEach(async () => {
 });
 
 after(async () => {
-  await context.close();
-  world.stop();
-  rmSync(profile, { recursive: true, force: true });
+  try {
+    if (context) await context.close();
+  } finally {
+    world.stop();
+    rmSync(profile, { recursive: true, force: true });
+  }
 });
 
 test("an invalid key is rejected and not stored", async () => {
