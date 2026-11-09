@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   recover:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/fix/recovery-signature-diagnostic'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -82,26 +82,10 @@ jobs:
           node scripts/obtain-firefox-xpi.ts recover "$RELEASE_TAG" "$SOURCE_DIR/dist/firefox" \
             "$RUNNER_TEMP/unused-source.zip" \
             "$SOURCE_DIR/release/clockify-for-linear-${RELEASE_TAG#v}-firefox.xpi"
-      - name: Verify Firefox signature
-        run: |
-          cd "$SOURCE_DIR"
-          node "$GITHUB_WORKSPACE/scripts/verify-firefox-signature.ts" \
-            "$SOURCE_DIR/release/clockify-for-linear-${RELEASE_TAG#v}-firefox.xpi"
-      - name: Check and publish the four assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          version=${RELEASE_TAG#v}
-          expected=$(printf '%s\n' \
-            "clockify-for-linear-$version-chrome.crx" \
-            "clockify-for-linear-$version-chrome.zip" \
-            "clockify-for-linear-$version-firefox.xpi" \
-            "clockify-for-linear-$version-firefox.zip")
-          test "$(ls "$SOURCE_DIR/release")" = "$expected"
-          gh release create "$RELEASE_TAG" "$SOURCE_DIR"/release/clockify-for-linear-"$version"-* \
-            --verify-tag --title "$RELEASE_TAG" \
-            --notes "Chrome: the signed CRX is for self-hosted Linux distribution; the zip can be loaded unpacked. Firefox: the XPI is signed by Mozilla as an unlisted add-on; the zip is unsigned."
-          count=$(gh release view "$RELEASE_TAG" --json assets,isDraft \
-            --jq 'select(.isDraft == false) | .assets | length')
-          test "$count" = 4
+      - name: Save approved XPI for isolated verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: firefox-signature-diagnostic
+          path: ${{ runner.temp }}/release-source/release/clockify-for-linear-*-firefox.xpi
+          if-no-files-found: error
+          retention-days: 1
