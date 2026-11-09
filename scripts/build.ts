@@ -16,7 +16,8 @@ function manifest(browser: (typeof BROWSERS)[number]) {
     icons,
     action: { default_popup: "popup.html", default_icon: icons },
     permissions: ["storage"],
-    host_permissions: ["https://api.clockify.me/*"],
+    // app.clockify.me serves only the undocumented favorites read; without it favorites show as unavailable.
+    host_permissions: ["https://api.clockify.me/*", "https://app.clockify.me/*"],
     web_accessible_resources: [{ resources: ["widget.html"], matches: ["https://linear.app/*"] }],
     content_scripts: [
       { matches: ["https://linear.app/*"], js: ["content.js"], run_at: "document_idle" },

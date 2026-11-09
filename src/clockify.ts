@@ -1,8 +1,11 @@
 import { z } from "zod";
 
-import type { ProblemKind, Project } from "./model.ts";
+import type { Favorites, ProblemKind, Project } from "./model.ts";
 
 const API_BASE = "https://api.clockify.me/api/v1";
+
+/** Clockify's web-app API. It is undocumented; only the favorites read uses it, and its failure is masked. */
+const APP_API_BASE = "https://app.clockify.me/api";
 const REQUEST_TIMEOUT_MS = 15_000;
 const PROJECT_PAGE_SIZE = 100;
 const PROJECT_PAGE_LIMIT = 20;
@@ -38,7 +41,16 @@ const entrySchema = z.object({
   timeInterval: z.object({ start: z.string().min(1), end: optionalNull(z.string()) }),
 });
 
-const projectsSchema = z.array(z.object({ id: z.string().min(1), name: z.string() }));
+const projectsSchema = z.array(
+  z.object({
+    id: z.string().min(1),
+    name: z.string(),
+    color: optionalNull(z.string()),
+    clientName: optionalNull(z.string()),
+  }),
+);
+
+const favoriteIdsSchema = z.array(z.object({ id: z.string().min(1) }));
 const entriesSchema = z.array(entrySchema);
 const nothingSchema = z.null();
 
@@ -62,6 +74,8 @@ type Method = "GET" | "POST" | "PUT" | "DELETE";
 
 type Call<T> = {
   apiKey: string;
+  /** Defaults to the documented public API. */
+  base?: string;
   method: Method;
   path: string;
   body?: EntryBody;
@@ -78,7 +92,7 @@ async function call<T>(request: Call<T>): Promise<T> {
   let response: Response;
 
   try {
-    response = await fetch(`${API_BASE}${request.path}`, {
+    response = await fetch(`${request.base ?? API_BASE}${request.path}`, {
       method: request.method,
       headers,
       body: request.body === undefined ? undefined : JSON.stringify(request.body),
@@ -128,18 +142,64 @@ export async function loadAccount(apiKey: string): Promise<Account> {
   return { userId: user.id, workspaceId };
 }
 
-export async function loadProjects(apiKey: string, account: Account): Promise<Project[]> {
-  const projects: Project[] = [];
+export type ProjectCatalog = { projects: Project[]; favorites: Favorites };
+
+/** Every page of a paged GET, up to the page limit. */
+async function loadPages<T>(request: Call<T[]>): Promise<T[]> {
+  const items: T[] = [];
 
   for (let page = 1; page <= PROJECT_PAGE_LIMIT; page += 1) {
-    const path = `/workspaces/${account.workspaceId}/projects?archived=false&page=${page}&page-size=${PROJECT_PAGE_SIZE}`;
-    const batch = await call({ apiKey, method: "GET", path, schema: projectsSchema });
-    projects.push(...batch);
+    const path = `${request.path}&page=${page}&page-size=${PROJECT_PAGE_SIZE}`;
+    const batch = await call({ ...request, path });
+    items.push(...batch);
 
     if (batch.length < PROJECT_PAGE_SIZE) break;
   }
 
-  return projects.sort((a, b) => a.name.localeCompare(b.name));
+  return items;
+}
+
+/**
+ * The user's favorite projects, read from the endpoint Clockify's own project picker uses. It is
+ * undocumented, so any failure, including a partial read, reports favorites as unavailable instead
+ * of failing the project list.
+ */
+async function loadFavoriteIds(apiKey: string, account: Account): Promise<Set<string> | null> {
+  try {
+    const favorites = await loadPages({
+      apiKey,
+      base: APP_API_BASE,
+      method: "GET",
+      path: `/workspaces/${account.workspaceId}/project-picker/projects?favorites=true&archived=false`,
+      schema: favoriteIdsSchema,
+    });
+
+    return new Set(favorites.map((project) => project.id));
+  } catch {
+    return null;
+  }
+}
+
+/** Active projects, favorites first, then by name. */
+export async function loadProjects(apiKey: string, account: Account): Promise<ProjectCatalog> {
+  const [listed, favoriteIds] = await Promise.all([
+    loadPages({
+      apiKey,
+      method: "GET",
+      path: `/workspaces/${account.workspaceId}/projects?archived=false`,
+      schema: projectsSchema,
+    }),
+    loadFavoriteIds(apiKey, account),
+  ]);
+
+  const projects = listed.map((project) => ({
+    ...project,
+    favorite: favoriteIds?.has(project.id) ?? false,
+  }));
+
+  projects.sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name));
+
+  return { projects, favorites: favoriteIds === null ? "unavailable" : "loaded" };
 }
 
 export async function loadRunningEntry(apiKey: string, account: Account): Promise<Entry | null> {

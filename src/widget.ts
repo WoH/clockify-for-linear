@@ -23,8 +23,7 @@ if (root !== null && window !== window.top) {
   let lastLayout = "";
 
   const tracker = new Tracker(root, {
-    manageConnection: false,
-    minimizable: true,
+    surface: "widget",
     onLayout: (layout) => {
       const message = layoutMessageSchema.parse({ type: "layout", ...layout });
       const signature = JSON.stringify(message);
@@ -36,10 +35,17 @@ if (root !== null && window !== window.top) {
   });
 
   let lastContext = "";
+  let lastAttention: number | null = null;
 
   const poll = async (): Promise<void> => {
     const context = await pageContext();
-    const signature = JSON.stringify(context);
+
+    if (context !== null) {
+      if (lastAttention !== null && context.attention !== lastAttention) tracker.refresh();
+      lastAttention = context.attention;
+    }
+
+    const signature = JSON.stringify([context?.issue ?? null, context?.theme ?? null]);
 
     if (signature === lastContext) return;
     lastContext = signature;

@@ -13,13 +13,17 @@ import type { AddressInfo } from "node:net";
 export const SYNTHETIC_KEY = "synthetic-test-key-not-a-real-credential";
 
 const CLOCKIFY_HOST = "api.clockify.me";
+const CLOCKIFY_APP_HOST = "app.clockify.me";
 const LINEAR_HOST = "linear.app";
+
 export const SECOND_KEY = "second-synthetic-key-not-a-real-credential";
 
 const ACCOUNTS = new Map([
   [SYNTHETIC_KEY, { userId: "user-1", workspaceId: "ws-1" }],
   [SECOND_KEY, { userId: "user-2", workspaceId: "ws-2" }],
 ]);
+
+export type FakeProject = { id: string; name: string; color: string; clientName: string | null };
 
 export type FakeEntry = {
   id: string;
@@ -50,6 +54,7 @@ const bodySchema = z
 type RequestBody = z.infer<typeof bodySchema>;
 
 export type LoggedRequest = {
+  host: string;
   method: string;
   path: string;
   body: RequestBody | null;
@@ -70,10 +75,13 @@ export class FakeWorld {
   readonly requests: LoggedRequest[] = [];
   readonly blockedConnections: string[] = [];
   entries: FakeEntry[] = [];
-  projects = [
-    { id: "proj-au", name: "AU1002440" },
-    { id: "proj-other", name: "Internal" },
+  projects: FakeProject[] = [
+    { id: "proj-au", name: "AU1002440", color: "#0ea5e9", clientName: "Acme" },
+    { id: "proj-other", name: "Internal", color: "#f97316", clientName: null },
   ];
+
+  /** Project ids the fake user starred in Clockify, served by the web-app project picker endpoint. */
+  favoriteIds: string[] = [];
   proxyUrl = "";
   certificatePem = "";
   private nextId = 1;
@@ -122,7 +130,7 @@ export class FakeWorld {
         "-subj",
         "/CN=fake",
         "-addext",
-        `subjectAltName=DNS:${CLOCKIFY_HOST},DNS:${LINEAR_HOST}`,
+        `subjectAltName=DNS:${CLOCKIFY_HOST},DNS:${CLOCKIFY_APP_HOST},DNS:${LINEAR_HOST}`,
         "-keyout",
         keyFile,
         "-out",
@@ -137,6 +145,9 @@ export class FakeWorld {
       (request, response) => void this.route(request, response),
     );
 
+    // A dropped fault or a closing browser resets sockets; that is expected, not a test failure.
+    tls.on("secureConnection", (socket) => socket.on("error", () => undefined));
+    tls.on("tlsClientError", () => undefined);
     await new Promise<void>((resolve) => tls.listen(0, "127.0.0.1", resolve));
     // SAFETY: a server listening on a TCP port reports an AddressInfo, not a pipe path.
     const tlsPort = (tls.address() as AddressInfo).port;
@@ -145,10 +156,13 @@ export class FakeWorld {
       response.writeHead(403).end();
     });
 
+    proxy.on("connection", (socket) => socket.on("error", () => undefined));
+    proxy.on("clientError", (_, socket) => socket.destroy());
     proxy.on("connect", (request, socket) => {
+      socket.on("error", () => undefined);
       const [host = ""] = (request.url ?? "").split(":");
 
-      if (host !== CLOCKIFY_HOST && host !== LINEAR_HOST) {
+      if (host !== CLOCKIFY_HOST && host !== CLOCKIFY_APP_HOST && host !== LINEAR_HOST) {
         this.blockedConnections.push(request.url ?? "");
         socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
 
@@ -231,7 +245,7 @@ export class FakeWorld {
     const apiKey = apiKeyHeader === undefined ? null : String(apiKeyHeader);
     const path = request.url ?? "";
     const method = request.method ?? "GET";
-    this.requests.push({ method, path, body, apiKey });
+    this.requests.push({ host: host ?? "", method, path, body, apiKey });
     const fault = this.takeFault(method, path);
 
     if (fault?.delayMs !== undefined) await new Promise((r) => setTimeout(r, fault.delayMs));
@@ -316,10 +330,21 @@ export class FakeWorld {
       };
     }
 
-    if (method === "GET" && path.startsWith(`${base}/workspaces/${workspaceId}/projects`)) {
-      const page = new URL(path, "https://x").searchParams.get("page");
+    const page = new URL(path, "https://x").searchParams.get("page");
 
+    if (method === "GET" && path.startsWith(`${base}/workspaces/${workspaceId}/projects`)) {
       return { status: 200, json: page === "1" ? this.projects : [] };
+    }
+
+    const picker = `/api/workspaces/${workspaceId}/project-picker/projects?favorites=true`;
+
+    if (method === "GET" && path.startsWith(picker)) {
+      const favorites = this.projects.filter((project) => this.favoriteIds.includes(project.id));
+
+      return {
+        status: 200,
+        json: page === "1" ? favorites.map((p) => ({ ...p, favorite: true })) : [],
+      };
     }
 
     if (method === "GET" && path.includes(`/user/${userId}/time-entries`)) {

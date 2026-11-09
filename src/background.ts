@@ -10,6 +10,7 @@ import {
   updateEntry,
 } from "./clockify.ts";
 import {
+  changedMessageSchema,
   pageContextSchema,
   pageRequestSchema,
   requestSchema,
@@ -17,14 +18,14 @@ import {
   STORAGE_KEY_API_KEY,
 } from "./model.ts";
 
-import type { Account, Entry } from "./clockify.ts";
-import type { PageContext, Problem, Project, Reply, Request, Snapshot, Timer } from "./model.ts";
+import type { Account, Entry, ProjectCatalog } from "./clockify.ts";
+import type { PageContext, Problem, Reply, Request, Snapshot, Timer } from "./model.ts";
 
 const UNRESOLVED_KEY = "unresolvedOperations";
 const WIDGET_PAGE = "widget.html";
 const LINEAR_ORIGIN = "https://linear.app/";
 
-type Session = { apiKey: string; account: Account; projects: Project[] };
+type Session = { apiKey: string; account: Account; catalog: ProjectCatalog };
 
 type WriteRequest = Extract<Request, { type: "start" | "stop" | "save" | "discard" }>;
 
@@ -32,6 +33,10 @@ let session: Session | null = null;
 let lastObservation: { accountId: string; timer: Timer } | null = null;
 let epoch = 0;
 let writeQueue: Promise<unknown> = Promise.resolve();
+
+/** Bumped after every queued task, so a passive read started before a write is never shared with a view asking after it. */
+let generation = 0;
+let sharedRead: { generation: number; reply: Promise<Reply> } | null = null;
 
 function timerOf(entry: Entry | null): Timer {
   if (entry === null) return { kind: "idle" };
@@ -97,11 +102,11 @@ async function setUnresolved(accountId: string, operation: string | null): Promi
 async function openSession(apiKey: string, readEpoch: number): Promise<Session | null> {
   if (session?.apiKey === apiKey) return session;
   const account = await loadAccount(apiKey);
-  const projects = await loadProjects(apiKey, account);
+  const catalog = await loadProjects(apiKey, account);
 
   if (epoch !== readEpoch) return null;
   await chrome.storage.local.set({ [STORAGE_KEY_ACCOUNT]: accountIdOf(account) });
-  session = { apiKey, account, projects };
+  session = { apiKey, account, catalog };
 
   return session;
 }
@@ -137,7 +142,7 @@ async function observe(apiKey: string | null): Promise<{
       connection: "connected",
       accountId,
       timer,
-      projects: open.projects,
+      ...open.catalog,
       staleReason: null,
       unresolved: await unresolvedFor(accountId),
     };
@@ -153,7 +158,7 @@ async function observe(apiKey: string | null): Promise<{
       connection: "connected",
       accountId,
       timer: cached ?? { kind: "unknown" },
-      projects: session?.projects ?? [],
+      ...(session?.catalog ?? { projects: [], favorites: "unavailable" }),
       staleReason: problem.message,
       unresolved: await unresolvedFor(accountId),
     };
@@ -187,14 +192,14 @@ async function acknowledge(accountId: string): Promise<Reply> {
 async function connect(candidate: string): Promise<Reply> {
   try {
     const account = await loadAccount(candidate);
-    const projects = await loadProjects(candidate, account);
+    const catalog = await loadProjects(candidate, account);
     epoch += 1;
     lastObservation = null;
     await chrome.storage.local.set({
       [STORAGE_KEY_API_KEY]: candidate,
       [STORAGE_KEY_ACCOUNT]: accountIdOf(account),
     });
-    session = { apiKey: candidate, account, projects };
+    session = { apiKey: candidate, account, catalog };
 
     return readReply();
   } catch (error) {
@@ -334,9 +339,32 @@ async function runWrite(request: WriteRequest): Promise<Reply> {
   return { snapshot: after.snapshot, error: problem ?? after.error };
 }
 
+/** Every open popup and widget re-reads when told; none of them need to wait for their next poll. */
+function announceChange(): void {
+  generation += 1;
+  chrome.runtime
+    .sendMessage(changedMessageSchema.parse({ type: "changed" }))
+    .catch(() => undefined);
+}
+
+/** Views poll often, so concurrent passive reads share one Clockify request. */
+function passiveRead(): Promise<Reply> {
+  if (sharedRead !== null && sharedRead.generation === generation) return sharedRead.reply;
+  const entry = { generation, reply: readReply() };
+  sharedRead = entry;
+
+  const release = (): void => {
+    if (sharedRead === entry) sharedRead = null;
+  };
+
+  entry.reply.then(release, release);
+
+  return entry.reply;
+}
+
 /** Writes, acknowledgements and account changes share one queue so none can interleave with another. */
 function enqueue(task: () => Promise<Reply>): Promise<Reply> {
-  const result = writeQueue.then(task);
+  const result = writeQueue.then(task).finally(announceChange);
   writeQueue = result.catch(() => undefined);
 
   return result;
@@ -345,7 +373,7 @@ function enqueue(task: () => Promise<Reply>): Promise<Reply> {
 function handle(request: Request): Promise<Reply> {
   switch (request.type) {
     case "state":
-      return readReply();
+      return passiveRead();
     case "acknowledge":
       return enqueue(() => acknowledge(request.accountId));
     case "connect":
@@ -426,5 +454,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && STORAGE_KEY_API_KEY in changes) {
     epoch += 1;
     session = null;
+    announceChange();
   }
 });

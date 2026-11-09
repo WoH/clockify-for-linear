@@ -20,7 +20,10 @@ async function activeIssue(): Promise<Issue | null> {
 const root = document.getElementById("root");
 
 if (root !== null) {
-  const tracker = new Tracker(root, { manageConnection: true, minimizable: false });
-  tracker.setTheme(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const tracker = new Tracker(root, { surface: "popup" });
+  const scheme = window.matchMedia("(prefers-color-scheme: dark)");
+  const applyScheme = (): void => tracker.setTheme(scheme.matches ? "dark" : "light");
+  applyScheme();
+  scheme.addEventListener("change", applyScheme);
   void activeIssue().then((issue) => tracker.setIssue(issue));
 }

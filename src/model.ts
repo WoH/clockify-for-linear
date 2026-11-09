@@ -1,6 +1,16 @@
 import { z } from "zod";
 
-export const projectSchema = z.object({ id: z.string().min(1), name: z.string() });
+/** `favorite` is the user's own Clockify favorite flag; `color` is Clockify's CSS color for the project. */
+export const projectSchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  color: z.string().nullable(),
+  clientName: z.string().nullable(),
+  favorite: z.boolean(),
+});
+
+/** Whether `favorite` flags are real. Clockify's favorites come from an undocumented endpoint that may fail on its own. */
+export const favoritesSchema = z.enum(["loaded", "unavailable"]);
 
 export const runningEntrySchema = z.object({
   id: z.string().min(1),
@@ -22,6 +32,7 @@ export const snapshotSchema = z.discriminatedUnion("connection", [
     accountId: z.string().min(1).nullable(),
     timer: timerSchema,
     projects: z.array(projectSchema),
+    favorites: favoritesSchema,
     staleReason: z.string().nullable(),
     unresolved: z.string().nullable(),
   }),
@@ -88,10 +99,19 @@ export const layoutMessageSchema = z.object({
   height: z.number().int().min(40).max(600),
 });
 
-/** The Linear tab as the content script reports it to extension pages. */
-export const pageContextSchema = z.object({ issue: issueSchema.nullable(), theme: themeSchema });
+/** The Linear tab as the content script reports it to extension pages. `attention` counts focus and visibility returns so views can refresh. */
+export const pageContextSchema = z.object({
+  issue: issueSchema.nullable(),
+  theme: themeSchema,
+  attention: z.number().int().min(0),
+});
+
+/** Sent by the background to extension views after any account or timer write, so every open view re-reads. */
+export const changedMessageSchema = z.object({ type: z.literal("changed") });
 
 export type Project = z.infer<typeof projectSchema>;
+
+export type Favorites = z.infer<typeof favoritesSchema>;
 
 export type RunningEntry = z.infer<typeof runningEntrySchema>;
 
@@ -116,6 +136,8 @@ export type Theme = z.infer<typeof themeSchema>;
 export type LayoutMessage = z.infer<typeof layoutMessageSchema>;
 
 export type PageContext = z.infer<typeof pageContextSchema>;
+
+export type ChangedMessage = z.infer<typeof changedMessageSchema>;
 
 export const STORAGE_KEY_API_KEY = "clockifyApiKey";
 
@@ -151,10 +173,10 @@ export function titleFromDocumentTitle(documentTitle: string, identifier: string
 }
 
 /** A project is suggested only when exactly one project is named by the title's code. */
-export function projectForTitle(
+export function projectForTitle<P extends Pick<Project, "name">>(
   title: string | null,
-  projects: readonly Project[],
-): Project | null {
+  projects: readonly P[],
+): P | null {
   if (title === null) return null;
   const leading = /^([A-Za-z]+\d+)(?![A-Za-z0-9])/u.exec(title);
   const parenthesised = /\(([A-Za-z]+\d+)\)/u.exec(title);
