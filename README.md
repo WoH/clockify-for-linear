@@ -101,7 +101,7 @@ The workflow fails before building if the tag is not `v` plus the `package.json`
 
 **Firefox signing and AMO state.** Mozilla is the authority on whether a version was submitted. Before anything else the workflow asks the authenticated Mozilla v5 API (`scripts/amo.ts`) about the version:
 
-- **Absent:** the tag run submits the build with `web-ext sign --channel=unlisted` and the tagged source archive. The tagged source of this private repository goes to Mozilla reviewers. It waits up to 20 minutes.
+- **Absent:** the tag run submits the build with `web-ext sign --channel=unlisted` and the tagged source archive. The tagged source goes to Mozilla reviewers. It waits up to 20 minutes.
 - **Pending:** nothing is submitted or released. The run fails. Mozilla may defer signing for manual review.
 - **Approved:** the signed XPI is fetched from Mozilla, never resubmitted.
 - **Anything else** (duplicate versions, listed channel, disabled file, malformed or unreachable API): the run fails closed.
