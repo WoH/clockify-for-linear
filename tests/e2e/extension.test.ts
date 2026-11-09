@@ -64,9 +64,12 @@ before(async () => {
 async function connectedAs(key: string): Promise<void> {
   const page = await popup();
   const disconnect = page.getByTestId("disconnect");
+  const apiKey = page.getByTestId("api-key");
 
-  if (await disconnect.isVisible({ timeout: 1000 }).catch(() => false)) await disconnect.click();
-  await page.getByTestId("api-key").fill(key);
+  await disconnect.or(apiKey).first().waitFor();
+
+  if (await disconnect.isVisible()) await disconnect.click();
+  await apiKey.fill(key);
   await page.getByTestId("connect").click();
   await page.getByTestId("start").waitFor();
   await page.close();

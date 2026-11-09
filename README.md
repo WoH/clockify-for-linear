@@ -71,18 +71,28 @@ Firefox tests inspect extension storage through an extension page. The popup run
 
 ## Releases
 
-Pushing a tag `vX.Y.Z` runs the full check suite in both browsers, then creates a **draft** GitHub release with Chrome and Firefox zip files and a signed Chrome CRX. The workflow fails if the tag is not `v` plus the `package.json` version (which `scripts/build.ts` writes into both manifests) or if the release already exists, so published assets are never overwritten. This workflow does not submit the builds to a browser store.
+Pushing a tag `vX.Y.Z` runs the full check suite in both browsers, builds both zips, signs the Chrome CRX, gets the signed Firefox XPI from Mozilla, and only then creates a **published** GitHub release with all four assets. There is no draft release. Pull request checks never sign or publish, and CI uses throwaway keys only.
 
 1. Bump `version` in `package.json` and `package-lock.json`, merge, then `git tag vX.Y.Z && git push origin vX.Y.Z`.
-2. Review and publish the draft release.
+2. If the run fails with "awaiting review", wait for Mozilla's approval email and then follow Recovery.
 
-Locally, `npm run package` writes the archives to `release/`. Each archive has `manifest.json` at its root, and the script checks this.
+The workflow fails before building if the tag is not `v` plus the `package.json` version, if the tag is not the checked-out commit on `main`, or if a release for the tag already exists, so published assets are never overwritten. Locally, `npm run package` writes the zips to `release/`. Each has `manifest.json` at its root, and the script checks this.
 
-- **Chrome:** the release includes a signed `.crx` for self-hosted Linux distribution and a zip that you can extract and load with **Load unpacked** in `chrome://extensions`. Chrome restricts off-store installation on other platforms. The CRX uses the `CHROME_CRX_PRIVATE_KEY` GitHub Actions secret and the public ID in `tools/chrome-extension-id`. Keep a separate secure backup of the private key: GitHub cannot show it again, and a new key changes the extension ID. A separately loaded unpacked extension may have a different ID and separate storage.
-- **Firefox:** the zip is **unsigned**. Regular Firefox refuses unsigned add-ons except as temporary add-ons via `about:debugging`. The manually started **Sign Firefox add-on** workflow submits an unlisted build to Mozilla and attaches the signed `.xpi` to an existing draft release. It uses the `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` GitHub Actions secrets. Mozilla receives the extension and the repository source for review. The add-on is not publicly listed on AMO.
+**Firefox signing and AMO state.** Mozilla is the authority on whether a version was submitted. Before anything else the workflow asks the authenticated Mozilla v5 API (`scripts/amo.ts`) about the version:
 
-Run the signing workflow only after the version tag and draft release exist. Do not publish the draft while signing is running. The workflow adds a submission marker to the draft before contacting Mozilla. If Mozilla review is pending or the workflow times out, check the AMO developer dashboard before retrying. The version may already have been submitted.
+- **Absent:** the tag run submits the build with `web-ext sign --channel=unlisted` and the tagged source archive. The tagged source of this private repository goes to Mozilla reviewers. It waits up to 20 minutes.
+- **Pending:** nothing is submitted or released. The run fails. Mozilla may defer signing for manual review.
+- **Approved:** the signed XPI is fetched from Mozilla, never resubmitted.
+- **Anything else** (duplicate versions, listed channel, disabled file, malformed or unreachable API): the run fails closed.
 
-After a timed-out submission is approved, download the signed `.xpi` from the AMO developer dashboard. Build the same tag, extract the `.xpi`, and compare its files with `dist/firefox`, excluding `META-INF`. Test installation in a fresh Firefox profile. Then attach the `.xpi` to the draft release without replacing an existing asset.
+Every XPI, whether returned by `web-ext` or downloaded, is checked by `scripts/verify-firefox-xpi.ts`. It rejects duplicate paths, extra or missing files, and any file that differs from `dist/firefox` (the `META-INF` signature files are excluded). Downloads also must match the SHA-256 that Mozilla reports. Before publishing, Firefox must reject an unsigned control and accept the signed XPI with signature enforcement enabled. The API client sends the JWT only to the Mozilla API origin, never follows redirects automatically, refuses redirects outside Mozilla's origin and CDN, and retries only transient failures of read-only requests. Submission is never retried by the workflow, and runs for one tag are serialized by a concurrency group. The tagged workflow uses the `AMO_JWT_ISSUER` and `AMO_JWT_SECRET` secrets in the XPI step only. The add-on is not listed on AMO.
+
+**Recovery after a pending review.** When Mozilla approves the version, open **Actions > Release > Run workflow** and select the same tag `vX.Y.Z` as the ref (not a branch). By default, this run rebuilds the tag, signs the CRX, and downloads and verifies the approved XPI without submitting it again. If the version is still pending or absent, nothing is released. A GitHub rerun also uses this recovery mode.
+
+If a run failed before submitting and the AMO developer dashboard confirms that Mozilla has no submission for the version, select **Allow submission only after checking Mozilla has no version** when starting the workflow. Do not select it when the earlier submission's outcome is unknown. Never re-tag the same version: a fix needs a new version.
+
+**Publishing is automatic.** `gh release create` stages assets in a temporary draft and publishes the release after uploading them. The workflow checks that the published release has four assets. An interrupted run may leave a draft that needs attention. Check the release and Mozilla dashboard before retrying; keep the tag and use the recovery workflow to download an already approved XPI rather than resubmit it.
+
+**Chrome and keys.** The release includes a signed `.crx` for self-hosted Linux distribution and a zip that you can load with **Load unpacked** in `chrome://extensions`. Chrome restricts off-store installation on other platforms. The CRX uses the `CHROME_CRX_PRIVATE_KEY` secret and the public ID in `tools/chrome-extension-id`, and signing fails if the key does not match that ID. Keep a separate secure backup of the private key: GitHub cannot show it again, and a new key changes the extension ID. A separately loaded unpacked extension may have a different ID and separate storage. The Firefox zip is unsigned, and regular Firefox installs only the signed XPI.
 
 Mozilla reviewers can reproduce the Firefox build on Ubuntu 24.04 x86-64 with Node.js 24. Run `npm ci` followed by `npm run build`; the result is in `dist/firefox`. The extension does not currently provide an automatic Firefox update URL.

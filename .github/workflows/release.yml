@@ -1,36 +1,65 @@
 name: Release
 
+# A tag push builds, signs, and publishes. Manual runs recover an approved XPI by default;
+# a new submission requires the explicit submit-if-absent option.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      submit_if_absent:
+        description: Allow submission only after checking Mozilla has no version
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   check:
+    if: github.ref_type == 'tag'
     uses: ./.github/workflows/ci.yml
 
   release:
     needs: check
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 45
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+      FIREFOX_MODE: ${{ ((github.event_name == 'push' && github.run_attempt == '1') || (github.event_name == 'workflow_dispatch' && inputs.submit_if_absent)) && 'submit' || 'recover' }}
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
+      - name: Check the tag, commit, and release state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" = "$(git rev-parse HEAD)"
+          git merge-base --is-ancestor HEAD origin/main
+          test "$(node -p 'require("./package.json").version')" = "${RELEASE_TAG#v}"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "A release for $RELEASE_TAG already exists; it is never replaced." >&2
+            exit 1
+          fi
       - run: npm ci
+      - run: npm ci --prefix tools/firefox-signing
       - run: npm run build
       - name: Package (fails if the tag differs from the package and manifest version)
         run: node scripts/package.ts
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
       - name: Sign Chrome CRX
         env:
           CHROME_CRX_PRIVATE_KEY: ${{ secrets.CHROME_CRX_PRIVATE_KEY }}
@@ -42,12 +71,45 @@ jobs:
           trap 'rm -f -- "$key"' EXIT
           printf '%s\n' "$CHROME_CRX_PRIVATE_KEY" > "$key"
           scripts/package-crx.sh dist/chrome "$key" "$(< tools/chrome-extension-id)" \
-            "release/clockify-for-linear-${GITHUB_REF_NAME#v}-chrome.crx"
-      # create fails when the release already exists, so published assets are never overwritten.
-      - name: Create draft release
-        run: >
-          gh release create "$GITHUB_REF_NAME" release/*.zip release/*.crx
-          --verify-tag --draft --title "$GITHUB_REF_NAME"
-          --notes "Chrome: the signed CRX is for self-hosted Linux distribution; the zip can be loaded unpacked. Firefox: the zip is unsigned until Mozilla signs it as an unlisted add-on."
+            "release/clockify-for-linear-${RELEASE_TAG#v}-chrome.crx"
+      # Mozilla is queried first, so a version is submitted at most once. A pending or
+      # unreadable AMO state stops the run before any GitHub release exists.
+      - name: Obtain the signed Firefox XPI
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_JWT_ISSUER }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          set -euo pipefail
+          git archive --format=zip HEAD > "$RUNNER_TEMP/firefox-source.zip"
+          node scripts/obtain-firefox-xpi.ts "$FIREFOX_MODE" "$RELEASE_TAG" dist/firefox \
+            "$RUNNER_TEMP/firefox-source.zip" \
+            "release/clockify-for-linear-${RELEASE_TAG#v}-firefox.xpi"
+      - name: Install Firefox for signature verification
+        run: npx playwright-core install --with-deps firefox
+      - name: Verify Firefox signature
+        run: node scripts/verify-firefox-signature.ts "release/clockify-for-linear-${RELEASE_TAG#v}-firefox.xpi"
+      - name: Check the four assets
+        run: |
+          set -euo pipefail
+          version=${RELEASE_TAG#v}
+          expected=$(printf '%s\n' \
+            "clockify-for-linear-$version-chrome.crx" \
+            "clockify-for-linear-$version-chrome.zip" \
+            "clockify-for-linear-$version-firefox.xpi" \
+            "clockify-for-linear-$version-firefox.zip")
+          test "$(ls release)" = "$expected"
+          unzip -t "release/clockify-for-linear-$version-firefox.xpi" >/dev/null
+          node scripts/verify-firefox-xpi.ts "release/clockify-for-linear-$version-firefox.xpi" dist/firefox
+      # gh stages assets in a temporary draft and publishes after upload. An interrupted run may leave a draft.
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=${RELEASE_TAG#v}
+          gh release create "$RELEASE_TAG" release/clockify-for-linear-"$version"-* \
+            --verify-tag --title "$RELEASE_TAG" \
+            --notes "Chrome: the signed CRX is for self-hosted Linux distribution; the zip can be loaded unpacked. Firefox: the XPI is signed by Mozilla as an unlisted add-on; the zip is unsigned."
+          count=$(gh release view "$RELEASE_TAG" --json assets,isDraft \
+            --jq 'select(.isDraft == false) | .assets | length')
+          test "$count" = 4

@@ -3,7 +3,7 @@ import { cp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { chromium, firefox } from "playwright-core";
 
-import { installTemporaryAddon, assertMarionettePortFree } from "./marionette.ts";
+import { installAddon, assertMarionettePortFree } from "./marionette.ts";
 
 import type { BrowserContext, Frame, Page } from "playwright-core";
 
@@ -142,7 +142,7 @@ async function launchFirefox(profile: string, proxy: string): Promise<LaunchedBr
   context.setDefaultTimeout(5_000);
 
   try {
-    assert.equal(await installTemporaryAddon(extension), GECKO_ID);
+    assert.equal(await installAddon(extension, true), GECKO_ID);
   } catch (error) {
     await context.close();
     throw error;

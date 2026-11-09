@@ -42,6 +42,8 @@ jobs:
           test ! -e "$work/wrong.crx"
       # Installs the exact Chromium and Firefox revisions that the locked playwright-core expects.
       - run: npx playwright-core install --with-deps chromium firefox
+      - name: Check Firefox signature enforcement
+        run: node scripts/verify-firefox-signature.ts --self-test
       - name: Chromium end-to-end
         run: npm run test:e2e:chromium
       - name: Firefox end-to-end

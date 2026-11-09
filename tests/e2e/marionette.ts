@@ -22,6 +22,7 @@ export async function assertMarionettePortFree(): Promise<void> {
 
 async function session(commands: [string, object][]): Promise<unknown[]> {
   const socket = connect(MARIONETTE_PORT, "127.0.0.1");
+  socket.setTimeout(30_000, () => socket.destroy(new Error("Marionette timed out.")));
   let buffer = "";
   const waiters: ((message: string) => void)[] = [];
   const failed = new Promise<never>((_, reject) => socket.once("error", reject));
@@ -63,8 +64,8 @@ async function session(commands: [string, object][]): Promise<unknown[]> {
   }
 }
 
-/** Installs an unpacked extension as a temporary add-on and returns its Gecko id. */
-export async function installTemporaryAddon(path: string): Promise<string> {
+/** Installs an add-on and returns its Gecko id. */
+export async function installAddon(path: string, temporary: boolean): Promise<string> {
   const deadline = Date.now() + 30_000;
   let lastError: unknown;
 
@@ -72,7 +73,7 @@ export async function installTemporaryAddon(path: string): Promise<string> {
     try {
       const [, installed] = await session([
         ["WebDriver:NewSession", {}],
-        ["Addon:Install", { path, temporary: true }],
+        ["Addon:Install", { path, temporary }],
       ]);
 
       return installedSchema.parse(installed).value;
