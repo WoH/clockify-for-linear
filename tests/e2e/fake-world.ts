@@ -91,6 +91,7 @@ export class FakeWorld {
 
   /** Project ids the fake user starred in Clockify, served by the web-app project picker endpoint. */
   favoriteIds: string[] = [];
+  readonly projectFieldDefaults = new Map<string, FakeCustomField[]>();
   proxyUrl = "";
   certificatePem = "";
   private nextId = 1;
@@ -392,10 +393,26 @@ export class FakeWorld {
     }
 
     if (method === "PUT" && body !== null) {
+      const projectId = body.projectId ?? null;
+      const defaults = this.projectFieldDefaults.get(projectId ?? "");
+
+      if (
+        defaults !== undefined &&
+        entry.projectId !== projectId &&
+        body.customFields !== undefined
+      ) {
+        return {
+          status: 400,
+          json: { message: "The project supplies its own custom field values." },
+        };
+      }
+
+      const fields = body.customFields ?? (entry.projectId !== projectId ? defaults : undefined);
+
       entry.billable = body.billable === true;
       entry.description = body.description ?? "";
-      entry.projectId = body.projectId ?? null;
-      entry.customFieldValues = (body.customFields ?? []).map((field) => ({
+      entry.projectId = projectId;
+      entry.customFieldValues = (fields ?? []).map((field) => ({
         ...entry.customFieldValues.find(
           ({ customFieldId }) => customFieldId === field.customFieldId,
         ),

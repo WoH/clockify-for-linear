@@ -53,6 +53,7 @@ const projectsSchema = z.array(
 const favoriteIdsSchema = z.array(z.object({ id: z.string().min(1) }));
 const entriesSchema = z.array(entrySchema);
 const nothingSchema = z.null();
+const rejectionSchema = z.object({ message: z.string() });
 
 const customFieldsSchema = z.array(
   z.object({
@@ -91,6 +92,16 @@ type Call<T> = {
   schema: z.ZodType<T, z.ZodTypeDef, unknown>;
 };
 
+async function rejectedWriteReason(response: Response): Promise<string> {
+  try {
+    const result = rejectionSchema.safeParse(await response.json());
+
+    return result.success ? result.data.message.replace(/\s+/gu, " ").trim().slice(0, 400) : "";
+  } catch {
+    return "";
+  }
+}
+
 /** Reads fail definitively; a failed write may or may not have reached Clockify. */
 async function call<T>(request: Call<T>): Promise<T> {
   const isWrite = request.method !== "GET";
@@ -125,7 +136,10 @@ async function call<T>(request: Call<T>): Promise<T> {
   }
 
   if (!response.ok) {
-    throw new ClockifyError("rejected", `Clockify rejected the request (HTTP ${response.status}).`);
+    const message = `Clockify rejected the request (HTTP ${response.status}).`;
+    const reason = isWrite && response.status === 400 ? await rejectedWriteReason(response) : "";
+
+    throw new ClockifyError("rejected", reason === "" ? message : `${message} ${reason}`);
   }
 
   try {
@@ -252,23 +266,16 @@ export function buildEntryUpdate(entry: Entry, change: EntryChange): EntryBody {
 
   if (fields === null || (Array.isArray(fields) && fields.length === 0)) return body;
 
-  if (change.end === undefined) {
-    throw new ClockifyError(
-      "blocked",
-      "This entry has custom fields. Change it in Clockify instead.",
-    );
-  }
-
   const parsed = customFieldsSchema.safeParse(fields);
 
   if (!parsed.success) {
     throw new ClockifyError(
       "blocked",
-      "This entry has custom fields the extension cannot preserve. Stop it in Clockify instead.",
+      "This entry has custom field values the extension does not understand.",
     );
   }
 
-  body.customFields = parsed.data;
+  if (projectId === entry.projectId) body.customFields = parsed.data;
 
   return body;
 }

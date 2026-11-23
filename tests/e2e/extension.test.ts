@@ -81,6 +81,7 @@ beforeEach(async () => {
   if (stored !== SYNTHETIC_KEY) await connectedAs(SYNTHETIC_KEY);
 
   world.entries = [];
+  world.projectFieldDefaults.clear();
   world.clearFaults();
   await runInExtension(() => chrome.storage.local.remove("unresolvedOperations"));
 });
@@ -163,7 +164,7 @@ test("start, an unconfirmed stop, then a successful stop", async () => {
   await page.close();
 });
 
-test("Stop preserves custom fields that Edit cannot change", async () => {
+test("Stop preserves custom fields and ignores unsaved edits", async () => {
   const running = world.seedRunning("original description", "proj-other");
 
   const fields = [
@@ -179,10 +180,6 @@ test("Stop preserves custom fields that Edit cannot change", async () => {
   const before = world.mutations().length;
 
   await view.getByTestId("description").fill("unsaved description");
-  await view.getByTestId("save").click();
-  await view.getByText("This entry has custom fields.", { exact: false }).waitFor();
-  assert.equal(world.mutations().length, before);
-
   await view.getByTestId("stop").click();
   await view.getByTestId("start").waitFor();
   assert.notEqual(running.timeInterval.end, null);
@@ -204,6 +201,41 @@ test("Stop preserves custom fields that Edit cannot change", async () => {
         ],
       ],
     ],
+  );
+  await page.close();
+});
+
+test("Save assigns a project to a timer with a hidden field, then Stop keeps the project default", async () => {
+  const running = world.seedRunning("manual", null);
+  running.customFieldValues = [{ customFieldId: "number", value: 0 }];
+  world.projectFieldDefaults.set("proj-au", [
+    { customFieldId: "number", value: 30, sourceType: "PROJECT" },
+  ]);
+
+  const page = await context.newPage();
+  await page.goto(ISSUE_URL);
+  const view = widget(page);
+  await view.getByTestId("stop").waitFor();
+  const before = world.mutations().length;
+
+  await chooseProject(view, "au10", "AU1002440");
+  await view.getByTestId("save").click();
+  await view.getByText("Saved to Clockify", { exact: true }).waitFor();
+  assert.equal(running.projectId, "proj-au");
+  assert.equal(running.timeInterval.end, null);
+  assert.equal(running.customFieldValues[0]?.value, 30);
+
+  await view.getByTestId("stop").click();
+  await view.getByTestId("start").waitFor();
+  assert.notEqual(running.timeInterval.end, null);
+  assert.equal(running.projectId, "proj-au");
+  assert.equal(running.customFieldValues[0]?.value, 30);
+  assert.deepEqual(
+    world
+      .mutations()
+      .slice(before)
+      .map(({ body }) => body?.customFields),
+    [undefined, [{ customFieldId: "number", value: 30, sourceType: "PROJECT" }]],
   );
   await page.close();
 });
