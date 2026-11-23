@@ -38,7 +38,7 @@ To build from source, see [Development](#development).
 - Open the toolbar popup and paste a Clockify API key. It is validated with `GET /user`, then stored in `chrome.storage.local` under `clockifyApiKey`. The key is never sent to content scripts or pages.
 - On `https://linear.app/<workspace>/issue/<KEY-n>` a floating widget (minimizable, follows Linear's theme) offers Start, Stop, Save changes and Discard (with confirmation). Description defaults to the issue key. A project is suggested only when exactly one project matches the code in the title.
 - Click the project field and type to search by project or client name. Clockify favorites appear first. Use the arrow keys and Enter to select a project.
-- Drafts are per issue when idle or per running entry. A refresh does not overwrite text you are editing.
+- Drafts are per issue when idle or per running entry. A refresh does not overwrite text you are editing. **Save and stop** applies your pending project and description when you stop the timer. Use **Save** to keep the timer running.
 - An open widget checks Clockify every four seconds while visible. It also refreshes when you return to the page. The interval increases after failed requests.
 - The popup shows the issue of the active Linear tab, or nothing.
 - The extension sends entry-addressed updates and deletions after a fresh read. If a write has an uncertain outcome, the affected account stays blocked until you press "Check Clockify".

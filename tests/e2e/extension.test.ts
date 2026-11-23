@@ -164,7 +164,7 @@ test("start, an unconfirmed stop, then a successful stop", async () => {
   await page.close();
 });
 
-test("Stop preserves custom fields and ignores unsaved edits", async () => {
+test("Save and stop applies pending text and preserves custom fields", async () => {
   const running = world.seedRunning("original description", "proj-other");
 
   const fields = [
@@ -179,11 +179,11 @@ test("Stop preserves custom fields and ignores unsaved edits", async () => {
   await view.getByTestId("stop").waitFor();
   const before = world.mutations().length;
 
-  await view.getByTestId("description").fill("unsaved description");
-  await view.getByTestId("stop").click();
+  await view.getByTestId("description").fill("updated description");
+  await view.getByRole("button", { name: "Save and stop", exact: true }).click();
   await view.getByTestId("start").waitFor();
   assert.notEqual(running.timeInterval.end, null);
-  assert.equal(running.description, "original description");
+  assert.equal(running.description, "updated description");
   assert.equal(running.projectId, "proj-other");
   assert.deepEqual(running.customFieldValues, fields);
   assert.deepEqual(
@@ -237,6 +237,46 @@ test("Save assigns a project to a timer with a hidden field, then Stop keeps the
       .map(({ body }) => body?.customFields),
     [undefined, [{ customFieldId: "number", value: 30, sourceType: "PROJECT" }]],
   );
+  await page.close();
+});
+
+test("Save and stop assigns a pending project and stops in one update", async () => {
+  const running = world.seedRunning("manual", null);
+  running.customFieldValues = [{ customFieldId: "number", value: 0 }];
+  world.projectFieldDefaults.set("proj-au", [{ customFieldId: "number", value: 30 }]);
+
+  const page = await context.newPage();
+  await page.goto(ISSUE_URL);
+  const view = widget(page);
+  await view.getByRole("button", { name: "Stop", exact: true }).waitFor();
+  await chooseProject(view, "au10", "AU1002440");
+  const before = world.mutations().length;
+
+  await view.getByRole("button", { name: "Save and stop", exact: true }).click();
+  await view.getByTestId("start").waitFor();
+  assert.equal(running.projectId, "proj-au");
+  assert.notEqual(running.timeInterval.end, null);
+  assert.equal(running.customFieldValues[0]?.value, 30);
+  assert.equal(world.mutations().length, before + 1);
+  await page.close();
+});
+
+test("Save and stop refuses to overwrite a timer edited elsewhere", async () => {
+  const running = world.seedRunning("original", "proj-other");
+
+  const page = await context.newPage();
+  await page.goto(ISSUE_URL);
+  const view = widget(page);
+  await view.getByTestId("stop").waitFor();
+  await view.getByTestId("description").fill("local edit");
+  running.description = "edit from another device";
+  const before = world.mutations().length;
+
+  await view.getByTestId("stop").click();
+  await view.getByText("The timer was edited in Clockify.", { exact: false }).waitFor();
+  assert.equal(world.mutations().length, before);
+  assert.equal(running.timeInterval.end, null);
+  assert.equal(running.description, "edit from another device");
   await page.close();
 });
 

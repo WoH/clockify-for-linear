@@ -236,7 +236,7 @@ export async function loadRunningEntry(apiKey: string, account: Account): Promis
 
 export type EntryChange =
   | { end: string; description?: never; projectId?: never }
-  | { description: string; projectId: string | null; end?: never };
+  | { description: string; projectId: string | null; end?: string };
 
 export function buildEntryUpdate(entry: Entry, change: EntryChange): EntryBody {
   if (entry.type !== undefined && entry.type !== "REGULAR" && entry.type !== "BREAK") {
@@ -244,9 +244,9 @@ export function buildEntryUpdate(entry: Entry, change: EntryChange): EntryBody {
   }
 
   const { description, projectId } =
-    change.end === undefined
-      ? change
-      : { description: entry.description ?? "", projectId: entry.projectId };
+    change.description === undefined
+      ? { description: entry.description ?? "", projectId: entry.projectId }
+      : change;
 
   const body: EntryBody = { start: entry.timeInterval.start, description };
 
