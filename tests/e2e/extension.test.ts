@@ -163,6 +163,49 @@ test("start, an unconfirmed stop, then a successful stop", async () => {
   await page.close();
 });
 
+test("Stop preserves custom fields that Edit cannot change", async () => {
+  const running = world.seedRunning("original description", "proj-other");
+  const fields = [
+    { customFieldId: "number", name: "Hidden number", type: "NUMBER", value: 0 },
+    { customFieldId: "switch", value: false, sourceType: "WORKSPACE" as const },
+  ];
+  running.customFieldValues = fields;
+  const page = await context.newPage();
+  await page.goto(ISSUE_URL);
+  const view = widget(page);
+  await view.getByTestId("stop").waitFor();
+  const before = world.mutations().length;
+
+  await view.getByTestId("description").fill("unsaved description");
+  await view.getByTestId("save").click();
+  await view.getByText("This entry has custom fields.", { exact: false }).waitFor();
+  assert.equal(world.mutations().length, before);
+
+  await view.getByTestId("stop").click();
+  await view.getByTestId("start").waitFor();
+  assert.notEqual(running.timeInterval.end, null);
+  assert.equal(running.description, "original description");
+  assert.equal(running.projectId, "proj-other");
+  assert.deepEqual(running.customFieldValues, fields);
+  assert.deepEqual(
+    world
+      .mutations()
+      .slice(before)
+      .map(({ method, path, body }) => [method, path, body?.customFields]),
+    [
+      [
+        "PUT",
+        `/api/v1/workspaces/ws-1/time-entries/${running.id}`,
+        [
+          { customFieldId: "number", value: 0 },
+          { customFieldId: "switch", value: false, sourceType: "WORKSPACE" },
+        ],
+      ],
+    ],
+  );
+  await page.close();
+});
+
 test("a stop that reached Clockify before the connection dropped is reconciled, not replayed", async () => {
   const page = await context.newPage();
   await page.goto(ISSUE_URL);
