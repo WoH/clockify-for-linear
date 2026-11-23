@@ -25,6 +25,14 @@ const ACCOUNTS = new Map([
 
 export type FakeProject = { id: string; name: string; color: string; clientName: string | null };
 
+const customFieldSchema = z.object({
+  customFieldId: z.string(),
+  sourceType: z.enum(["WORKSPACE", "PROJECT", "TIMEENTRY"]).optional(),
+  value: z.union([z.string(), z.number(), z.boolean(), z.array(z.string()), z.null()]),
+});
+
+type FakeCustomField = z.infer<typeof customFieldSchema> & { name?: string; type?: string };
+
 export type FakeEntry = {
   id: string;
   description: string;
@@ -34,7 +42,7 @@ export type FakeEntry = {
   tagIds: string[];
   type: string;
   userId: string;
-  customFieldValues: never[];
+  customFieldValues: FakeCustomField[];
   timeInterval: { start: string; end: string | null };
 };
 
@@ -48,6 +56,7 @@ const bodySchema = z
     billable: z.boolean().optional(),
     tagIds: z.array(z.string()).optional(),
     type: z.string().optional(),
+    customFields: z.array(customFieldSchema.strict()).optional(),
   })
   .strict();
 
@@ -82,6 +91,7 @@ export class FakeWorld {
 
   /** Project ids the fake user starred in Clockify, served by the web-app project picker endpoint. */
   favoriteIds: string[] = [];
+  readonly projectFieldDefaults = new Map<string, FakeCustomField[]>();
   proxyUrl = "";
   certificatePem = "";
   private nextId = 1;
@@ -383,9 +393,31 @@ export class FakeWorld {
     }
 
     if (method === "PUT" && body !== null) {
+      const projectId = body.projectId ?? null;
+      const defaults = this.projectFieldDefaults.get(projectId ?? "");
+
+      if (
+        defaults !== undefined &&
+        entry.projectId !== projectId &&
+        body.customFields !== undefined
+      ) {
+        return {
+          status: 400,
+          json: { message: "The project supplies its own custom field values." },
+        };
+      }
+
+      const fields = body.customFields ?? (entry.projectId !== projectId ? defaults : undefined);
+
       entry.billable = body.billable === true;
       entry.description = body.description ?? "";
-      entry.projectId = body.projectId ?? null;
+      entry.projectId = projectId;
+      entry.customFieldValues = (fields ?? []).map((field) => ({
+        ...entry.customFieldValues.find(
+          ({ customFieldId }) => customFieldId === field.customFieldId,
+        ),
+        ...field,
+      }));
 
       if (body.end !== undefined) entry.timeInterval.end = body.end;
 

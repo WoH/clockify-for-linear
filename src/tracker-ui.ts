@@ -766,8 +766,19 @@ export class Tracker {
     const dirty =
       draft.description !== running.description || draft.projectId !== running.projectId;
 
-    const stop = button("stop", "Stop", "stop", "primary", (id) => {
-      void this.act({ type: "stop", accountId: id, entryId: running.id });
+    const edit = {
+      description: draft.description,
+      projectId: draft.projectId,
+      expect: { description: draft.baseDescription, projectId: draft.baseProjectId },
+    };
+
+    const stop = button("stop", dirty ? "Save and stop" : "Stop", "stop", "primary", (id) => {
+      void this.act({
+        type: "stop",
+        accountId: id,
+        entryId: running.id,
+        edit: dirty ? edit : undefined,
+      });
     });
 
     stop.classList.add("grow");
@@ -783,9 +794,7 @@ export class Tracker {
           type: "save",
           accountId: id,
           entryId: running.id,
-          description: draft.description,
-          projectId: draft.projectId,
-          expect: { description: draft.baseDescription, projectId: draft.baseProjectId },
+          ...edit,
         }),
     );
 

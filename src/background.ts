@@ -258,37 +258,37 @@ async function dispatch(
     return null;
   }
 
-  if (request.type === "save" && request.projectId === null && running.projectId !== null) {
-    return {
-      kind: "rejected",
-      message: "Removing a project is not supported here. Change it in Clockify instead.",
-    };
+  const edit = request.type === "save" ? request : request.edit;
+
+  if (edit !== undefined) {
+    if (
+      (running.description ?? "") !== edit.expect.description ||
+      running.projectId !== edit.expect.projectId
+    ) {
+      return conflict("The timer was edited in Clockify. Review it and try again.");
+    }
+
+    if (edit.projectId === null && running.projectId !== null) {
+      return {
+        kind: "rejected",
+        message: "Removing a project is not supported here. Change it in Clockify instead.",
+      };
+    }
   }
 
-  if (request.type === "stop") {
-    const stopped = await updateEntry(open.apiKey, open.account, running, {
-      description: running.description ?? "",
-      projectId: running.projectId,
-      end: new Date().toISOString(),
-    });
+  const end = request.type === "stop" ? new Date().toISOString() : undefined;
 
-    return stopped.timeInterval.end === null
-      ? { kind: "rejected", message: "Clockify did not stop the timer." }
-      : null;
+  const saved = await updateEntry(open.apiKey, open.account, running, {
+    description: edit?.description ?? running.description ?? "",
+    projectId: edit === undefined ? running.projectId : edit.projectId,
+    end,
+  });
+
+  if (end !== undefined && saved.timeInterval.end === null) {
+    return { kind: "rejected", message: "Clockify did not stop the timer." };
   }
 
-  const remote = { description: running.description ?? "", projectId: running.projectId };
-
-  if (
-    remote.description !== request.expect.description ||
-    remote.projectId !== request.expect.projectId
-  ) {
-    return conflict("The timer was edited in Clockify. Review it and try again.");
-  }
-
-  const saved = await updateEntry(open.apiKey, open.account, running, request);
-
-  if (saved.projectId !== request.projectId) {
+  if (edit !== undefined && saved.projectId !== edit.projectId) {
     return { kind: "rejected", message: "Clockify did not apply the project change." };
   }
 

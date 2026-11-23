@@ -59,6 +59,12 @@ const projectIdSchema = z.string().min(1).nullable();
 const entryIdSchema = z.string().min(1);
 const accountIdSchema = z.string().min(1);
 
+const entryEditSchema = z.object({
+  description: descriptionSchema,
+  projectId: projectIdSchema,
+  expect: z.object({ description: z.string(), projectId: projectIdSchema }),
+});
+
 export const requestSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("state") }),
   z.object({ type: z.literal("acknowledge"), accountId: accountIdSchema }),
@@ -70,14 +76,17 @@ export const requestSchema = z.discriminatedUnion("type", [
     description: descriptionSchema,
     projectId: projectIdSchema,
   }),
-  z.object({ type: z.literal("stop"), accountId: accountIdSchema, entryId: entryIdSchema }),
+  z.object({
+    type: z.literal("stop"),
+    accountId: accountIdSchema,
+    entryId: entryIdSchema,
+    edit: entryEditSchema.optional(),
+  }),
   z.object({
     type: z.literal("save"),
     accountId: accountIdSchema,
     entryId: entryIdSchema,
-    description: descriptionSchema,
-    projectId: projectIdSchema,
-    expect: z.object({ description: z.string(), projectId: projectIdSchema }),
+    ...entryEditSchema.shape,
   }),
   z.object({ type: z.literal("discard"), accountId: accountIdSchema, entryId: entryIdSchema }),
 ]);

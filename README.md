@@ -38,7 +38,7 @@ To build from source, see [Development](#development).
 - Open the toolbar popup and paste a Clockify API key. It is validated with `GET /user`, then stored in `chrome.storage.local` under `clockifyApiKey`. The key is never sent to content scripts or pages.
 - On `https://linear.app/<workspace>/issue/<KEY-n>` a floating widget (minimizable, follows Linear's theme) offers Start, Stop, Save changes and Discard (with confirmation). Description defaults to the issue key. A project is suggested only when exactly one project matches the code in the title.
 - Click the project field and type to search by project or client name. Clockify favorites appear first. Use the arrow keys and Enter to select a project.
-- Drafts are per issue when idle or per running entry. A refresh does not overwrite text you are editing.
+- Drafts are per issue when idle or per running entry. A refresh does not overwrite text you are editing. **Save and stop** applies your pending project and description when you stop the timer. Use **Save** to keep the timer running.
 - An open widget checks Clockify every four seconds while visible. It also refreshes when you return to the page. The interval increases after failed requests.
 - The popup shows the issue of the active Linear tab, or nothing.
 - The extension sends entry-addressed updates and deletions after a fresh read. If a write has an uncertain outcome, the affected account stays blocked until you press "Check Clockify".
@@ -48,7 +48,7 @@ To build from source, see [Development](#development).
 - Clockify offers no idempotency or compare-and-swap. Another client can change an entry between the preflight read and the write. Stop uses `PUT` with `end` because the documented stop endpoint is user-scoped and could stop a replacement timer.
 - The extension does not retry writes, but the browser may retry an HTTP request after a connection reset. In a Chromium test, one failed `PUT` reached the fake server twice.
 - Removing a project from a running entry is not supported. Change it in Clockify instead.
-- Entries with custom fields or non-regular types are refused for editing and stopping, because the documented PUT semantics for them are not verified.
+- Stop and edits that keep the same project send existing custom field values back to Clockify. When you change the project, the extension leaves custom fields to Clockify so it can apply the [new project's defaults](https://clockify.me/help/track-time-and-expenses/custom-fields#customize-fields-by-project). The extension blocks edits and stops if it cannot read the existing custom values. It can stop or edit only regular entries and breaks.
 - The unresolved-operation marker is persisted before dispatch, but there is no automatic crash recovery beyond showing it and requiring a manual re-check.
 - Clockify favorites use an undocumented endpoint at `app.clockify.me`. The extension sends your API key to that host to load favorites. If that request fails, the project picker lists projects by name and shows a notice.
 - The old local history list was removed. Legacy stored keys (`timerState`, `entries`, `currentLinearIssue`) are ignored, not deleted.
