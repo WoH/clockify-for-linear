@@ -267,8 +267,6 @@ async function dispatch(
 
   if (request.type === "stop") {
     const stopped = await updateEntry(open.apiKey, open.account, running, {
-      description: running.description ?? "",
-      projectId: running.projectId,
       end: new Date().toISOString(),
     });
 
@@ -286,7 +284,10 @@ async function dispatch(
     return conflict("The timer was edited in Clockify. Review it and try again.");
   }
 
-  const saved = await updateEntry(open.apiKey, open.account, running, request);
+  const saved = await updateEntry(open.apiKey, open.account, running, {
+    description: request.description,
+    projectId: request.projectId,
+  });
 
   if (saved.projectId !== request.projectId) {
     return { kind: "rejected", message: "Clockify did not apply the project change." };

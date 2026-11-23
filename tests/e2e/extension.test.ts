@@ -165,10 +165,12 @@ test("start, an unconfirmed stop, then a successful stop", async () => {
 
 test("Stop preserves custom fields that Edit cannot change", async () => {
   const running = world.seedRunning("original description", "proj-other");
+
   const fields = [
     { customFieldId: "number", name: "Hidden number", type: "NUMBER", value: 0 },
     { customFieldId: "switch", value: false, sourceType: "WORKSPACE" as const },
   ];
+
   running.customFieldValues = fields;
   const page = await context.newPage();
   await page.goto(ISSUE_URL);

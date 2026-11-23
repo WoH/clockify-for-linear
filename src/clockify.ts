@@ -37,7 +37,7 @@ const entrySchema = z.object({
   tagIds: optionalNull(z.array(z.string())),
   type: z.string().optional(),
   userId: z.string().min(1),
-  customFieldValues: optionalNull(z.array(z.object({}).passthrough())),
+  customFieldValues: optionalNull(z.unknown()),
   timeInterval: z.object({ start: z.string().min(1), end: optionalNull(z.string()) }),
 });
 
@@ -54,6 +54,14 @@ const favoriteIdsSchema = z.array(z.object({ id: z.string().min(1) }));
 const entriesSchema = z.array(entrySchema);
 const nothingSchema = z.null();
 
+const customFieldsSchema = z.array(
+  z.object({
+    customFieldId: z.string().min(1),
+    value: z.union([z.string(), z.number().finite(), z.boolean(), z.null(), z.array(z.string())]),
+    sourceType: z.enum(["WORKSPACE", "PROJECT", "TIMEENTRY"]).optional(),
+  }),
+);
+
 export type Entry = z.infer<typeof entrySchema>;
 
 export type Account = { userId: string; workspaceId: string };
@@ -68,6 +76,7 @@ export type EntryBody = {
   billable?: boolean;
   tagIds?: string[];
   type?: string;
+  customFields?: z.infer<typeof customFieldsSchema>;
 };
 
 type Method = "GET" | "POST" | "PUT" | "DELETE";
@@ -211,30 +220,25 @@ export async function loadRunningEntry(apiKey: string, account: Account): Promis
   return running[0] ?? null;
 }
 
-export type EntryChange = { description: string; projectId: string | null; end?: string };
+export type EntryChange =
+  | { end: string; description?: never; projectId?: never }
+  | { description: string; projectId: string | null; end?: never };
 
-/**
- * Builds the documented PUT /time-entries/{id} body from the fields the schema lists as writable.
- * Entries with custom field values or non-regular types are refused because their PUT semantics
- * are not documented well enough to prove they would be preserved.
- */
 export function buildEntryUpdate(entry: Entry, change: EntryChange): EntryBody {
   if (entry.type !== undefined && entry.type !== "REGULAR" && entry.type !== "BREAK") {
     throw new ClockifyError("blocked", "This entry type cannot be changed from the extension.");
   }
 
-  if (entry.customFieldValues !== null && entry.customFieldValues.length > 0) {
-    throw new ClockifyError(
-      "blocked",
-      "This entry has custom fields. Change it in Clockify instead.",
-    );
-  }
+  const { description, projectId } =
+    change.end === undefined
+      ? change
+      : { description: entry.description ?? "", projectId: entry.projectId };
 
-  const body: EntryBody = { start: entry.timeInterval.start, description: change.description };
+  const body: EntryBody = { start: entry.timeInterval.start, description };
 
-  if (change.projectId !== null) body.projectId = change.projectId;
+  if (projectId !== null) body.projectId = projectId;
 
-  if (entry.taskId !== null && change.projectId === entry.projectId) body.taskId = entry.taskId;
+  if (entry.taskId !== null && projectId === entry.projectId) body.taskId = entry.taskId;
 
   if (entry.billable !== undefined) body.billable = entry.billable;
 
@@ -243,6 +247,28 @@ export function buildEntryUpdate(entry: Entry, change: EntryChange): EntryBody {
   if (entry.type !== undefined) body.type = entry.type;
 
   if (change.end !== undefined) body.end = change.end;
+
+  const fields = entry.customFieldValues;
+
+  if (fields === null || (Array.isArray(fields) && fields.length === 0)) return body;
+
+  if (change.end === undefined) {
+    throw new ClockifyError(
+      "blocked",
+      "This entry has custom fields. Change it in Clockify instead.",
+    );
+  }
+
+  const parsed = customFieldsSchema.safeParse(fields);
+
+  if (!parsed.success) {
+    throw new ClockifyError(
+      "blocked",
+      "This entry has custom fields the extension cannot preserve. Stop it in Clockify instead.",
+    );
+  }
+
+  body.customFields = parsed.data;
 
   return body;
 }

@@ -40,7 +40,17 @@ test("clearing the project omits it and drops the project's task", () => {
   assert.equal("taskId" in body, false);
 });
 
-test("entries whose update semantics are undocumented are refused", () => {
+test("Stop refuses custom fields it cannot write back", () => {
+  const end = "2026-01-01T11:00:00Z";
+
+  for (const fields of [[{ customFieldId: "missing-value" }], { value: 0 }]) {
+    assert.throws(() => buildEntryUpdate(entry({ customFieldValues: fields }), { end }), {
+      kind: "blocked",
+    });
+  }
+});
+
+test("editing entries with custom fields or unsupported types is blocked", () => {
   const custom = entry({ customFieldValues: [{ customFieldId: "c" }] });
   assert.throws(
     () => buildEntryUpdate(custom, { description: "x", projectId: null }),
